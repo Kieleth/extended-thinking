@@ -1,0 +1,104 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "extended-thinking"
+version = "0.1.0"
+description = "A pluggable thinking layer for AI-augmented work. Concept extraction, bitemporal knowledge graph, and grounded wisdom synthesis over any memory system."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { file = "LICENSE.md" }
+authors = [
+    { name = "Kieleth", email = "kieleth@gmail.com" },
+]
+keywords = [
+    "claude-code",
+    "mcp",
+    "knowledge-graph",
+    "memory",
+    "llm",
+    "concept-extraction",
+    "bitemporal",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "pydantic>=2.10",
+    "pydantic-settings>=2.7",
+    "anthropic>=0.49",
+    "openai>=1.65",
+    "python-multipart>=0.0.18",
+    "websockets>=14.0",
+    "chromadb>=0.5",
+    "kuzu>=0.6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.9",
+    "httpx>=0.28",
+    "build>=1.2",
+    "twine>=5.1",
+    "syrupy>=4",
+    "pytest-recording>=0.13",
+    "hypothesis>=6.100",
+    "numpy>=1.26",
+    "linkml-runtime>=1.7",
+    "linkml>=1.7",
+]
+mem0 = [
+    "mem0ai>=0.1",
+]
+zep = [
+    "zep-cloud>=2.0",
+]
+graphiti = [
+    "graphiti-core>=0.3",
+]
+all = [
+    "mem0ai>=0.1",
+    "zep-cloud>=2.0",
+    "graphiti-core>=0.3",
+]
+
+[project.scripts]
+et = "extended_thinking.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/Kieleth/extended-thinking"
+Repository = "https://github.com/Kieleth/extended-thinking"
+Issues = "https://github.com/Kieleth/extended-thinking/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+extended_thinking = ["hooks/*.sh", "py.typed"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+markers = [
+    "acceptance: end-to-end AT suite (default, runs on fast path)",
+    "vcr: test replays recorded LLM responses from a cassette",
+    "live: test hits real LLM API, skipped unless LIVE_API=1",
+    "slow: test takes >1s, deselect-able via `-m 'not slow'`",
+]

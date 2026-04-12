@@ -1,0 +1,36 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    volumes:
+      - silk_data:/app/data/silk
+    env_file: .env
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    environment:
+      - API_URL=http://api:8000
+      - AUTH_SECRET=${AUTH_SECRET}
+      - AUTH_USERNAME=${AUTH_USERNAME}
+      - AUTH_PASSWORD_HASH=${AUTH_PASSWORD_HASH}
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  gateway:
+    image: nginx:alpine
+    ports:
+      - "${PORT:-3100}:80"
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - api
+      - web
+    restart: unless-stopped
+
+volumes:
+  silk_data:

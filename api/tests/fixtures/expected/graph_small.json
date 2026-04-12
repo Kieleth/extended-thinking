@@ -1,0 +1,36 @@
+{
+  "_comment": "Loadable graph fixture. Matches fixture_loader.load_graph_from_json shape. Concepts have explicit IDs so tests can assert on stable identifiers. Weights reflect the bias you'd see after extraction+reinforcement: strong decision edges, medium support edges, weak tangent edges.",
+  "concepts": [
+    {"id": "kuzu", "name": "Kuzu", "category": "entity",
+     "description": "Embedded graph DB with Cypher and temporal properties",
+     "source_quote": "look at Kuzu. It's embedded, Cypher-native, and supports temporal properties on edges"},
+    {"id": "sqlite", "name": "SQLite", "category": "entity",
+     "description": "Row store considered and rejected as KG backend",
+     "source_quote": "SQLite with two timestamp columns would work, but I'm worried about query ergonomics"},
+    {"id": "bitemporal_kg", "name": "Bitemporal Knowledge Graph", "category": "topic",
+     "description": "Graph with valid_time and transaction_time per edge",
+     "source_quote": "I need a store for a bitemporal knowledge graph"},
+    {"id": "kg_store_choice", "name": "KG store choice", "category": "decision",
+     "description": "Which backend for the knowledge graph layer",
+     "source_quote": "Decision: going with Kuzu for the KG layer"},
+    {"id": "chromadb", "name": "ChromaDB", "category": "entity",
+     "description": "Vector store for semantic retrieval",
+     "source_quote": "I'll keep ChromaDB for vector embeddings"},
+    {"id": "concept_store_legacy", "name": "ConceptStore (legacy)", "category": "tension",
+     "description": "Deprecated SQLite store, migration guard in place",
+     "source_quote": "SQLite stays only for the legacy ConceptStore until migration is done"},
+    {"id": "graphiti_zep", "name": "Graphiti / Zep", "category": "entity",
+     "description": "Prior art for temporal KG split",
+     "source_quote": "matches how Graphiti and most temporal KG systems structure things"}
+  ],
+  "relationships": [
+    {"source": "kg_store_choice", "target": "kuzu",         "weight": 3.0, "context": "decision selects", "t_valid_from": "2026-04-11T10:00:00+00:00"},
+    {"source": "kg_store_choice", "target": "sqlite",       "weight": 2.5, "context": "decision rejects", "t_valid_from": "2026-04-11T10:00:00+00:00"},
+    {"source": "kuzu",            "target": "bitemporal_kg","weight": 2.0, "context": "supports",         "t_valid_from": "2026-04-11T10:00:00+00:00"},
+    {"source": "chromadb",        "target": "kuzu",         "weight": 1.5, "context": "paired stores",   "t_valid_from": "2026-04-11T10:00:00+00:00"},
+    {"source": "concept_store_legacy", "target": "sqlite",  "weight": 1.5, "context": "backed by",       "t_valid_from": "2026-04-11T10:00:00+00:00"},
+    {"source": "graphiti_zep",    "target": "bitemporal_kg","weight": 1.0, "context": "prior art",       "t_valid_from": "2026-04-11T10:00:00+00:00"},
+    {"source": "bitemporal_kg",   "target": "kuzu",         "weight": 1.5, "context": "backed by",       "t_valid_from": "2026-04-11T10:00:00+00:00"},
+    {"source": "kg_store_choice", "target": "chromadb",     "weight": 1.0, "context": "keeps",           "t_valid_from": "2026-04-11T10:00:00+00:00"}
+  ]
+}

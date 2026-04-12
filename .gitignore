@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+venv/
+
+# Node
+node_modules/
+.next/
+out/
+
+# Generated schema artifacts
+schema/generated/
+
+# Silk data
+data/
+
+# Private work (not open-sourced, for current user/team work in progress)
+private/
+
+# Environment
+.env
+.env.local
+
+# ADR 012: secrets must never be committed.
+secrets.toml
+*.secrets.toml
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# Hypothesis property-test database
+.hypothesis/
+
+# pytest cache
+.pytest_cache/
+
+# Rust build artifacts (silk symlink)
+silk/target/
+
+# Chrome extension build
+extension/dist/
+
+# Swift build
+agent/.build/
+agent/.swiftpm/
+# web/ frontend (legacy, gitignored per audit 2026-04-12)
+web/

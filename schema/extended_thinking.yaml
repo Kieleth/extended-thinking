@@ -1,0 +1,563 @@
+# extended-thinking — LinkML Schema
+# SOURCE OF TRUTH for all domain types.
+#
+# Imports malleus (the root ontology — Entity, Event, Signal, Relation +
+# mixins). Every ET class declares is_a: against a malleus base. See
+# ../malleus/KNOWLEDGE_GRAPH_PROTOCOL.md for the constitutive-ontology rule.
+#
+# Generated artifacts (via `make schema`):
+#   api/.../generated/models.py   — Pydantic
+#   schema/generated/schema.json  — JSON Schema
+#   web/.../generated/types.ts    — TypeScript
+#   schema/generated/kuzu_ddl.py  — Kuzu DDL (ADR 013, via make schema-kuzu)
+#   schema/generated/kuzu_types.py— Typed Python accessors (ADR 013)
+
+id: https://extended-thinking.dev/schema
+name: extended_thinking
+title: Extended Thinking Cognitive Architecture
+description: >-
+  Ontology for an externalized cognitive architecture that captures how humans
+  think when using LLMs. Nodes represent captured sources, sessions, fragments,
+  concepts, chunks, insights, wisdoms, and suggestions. Edges (all subclassing
+  malleus:Relation) encode typed directed connections with bitemporal metadata.
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  et: https://extended-thinking.dev/schema/
+  malleus: https://malleus.dev/schema/
+
+default_range: string
+default_prefix: et
+
+imports:
+  - linkml:types
+  - imports/malleus
+
+
+# ── Enums ─────────────────────────────────────────────────────────────
+
+enums:
+
+  Platform:
+    description: Source platform where content was captured.
+    permissible_values:
+      claude_code:
+        description: Claude Code CLI session.
+      opencode:
+        description: opencode CLI session.
+      chatgpt:
+        description: ChatGPT web or API.
+      claude_ai:
+        description: Claude.ai web interface.
+      slack:
+        description: Slack message or thread.
+      browser:
+        description: Generic browser typing captured by extension.
+      native:
+        description: Native macOS typing captured by agent.
+      manual:
+        description: Manually pasted or imported content.
+
+  FragmentType:
+    description: Type of content fragment.
+    permissible_values:
+      message:
+        description: A conversational message (user or assistant).
+      code:
+        description: A code block or snippet.
+      note:
+        description: A free-form text note.
+      command:
+        description: A terminal command or shell invocation.
+
+  Role:
+    description: Role of the message author.
+    permissible_values:
+      user:
+        description: Human user input.
+      assistant:
+        description: AI assistant response.
+      system:
+        description: System prompt or context.
+
+  ConceptCategory:
+    description: Category of an extracted concept.
+    permissible_values:
+      topic:
+        description: A subject or domain area.
+      theme:
+        description: A recurring pattern or tendency.
+      entity:
+        description: A named thing (tool, library, person, project).
+      question:
+        description: An open question being explored.
+      decision:
+        description: A choice that was made.
+      tension:
+        description: A recurring conflict or trade-off.
+
+  InsightType:
+    description: Type of detected insight.
+    permissible_values:
+      pattern:
+        description: A recurring behavioral pattern.
+      connection:
+        description: A non-obvious link between concepts.
+      recurrence:
+        description: Something that keeps coming up across contexts.
+      evolution:
+        description: A concept or position that changed over time.
+
+  WisdomType:
+    description: Type of synthesized wisdom card.
+    permissible_values:
+      wisdom:
+        description: Grounded insight with evidence trail.
+      nothing_novel:
+        description: Refusal — graph did not support a grounded insight.
+
+  SuggestionType:
+    description: Type of proactive suggestion.
+    permissible_values:
+      explore:
+        description: Suggest exploring a new direction.
+      revisit:
+        description: Suggest revisiting a past topic.
+      connect:
+        description: Suggest connecting two unrelated concepts.
+      reconsider:
+        description: Suggest reconsidering a past decision.
+
+  SuggestionStatus:
+    description: Current status of a suggestion.
+    permissible_values:
+      pending:
+        description: Not yet acted upon.
+      acted:
+        description: User explored or acted on this.
+      dismissed:
+        description: User dismissed this suggestion.
+
+  SourceType:
+    description: Classification of a chunk's source material.
+    permissible_values:
+      conversation:
+        description: Transcript of a dialogue (Claude Code, ChatGPT, etc.).
+      documentation:
+        description: Docs, READMEs, guides.
+      spec:
+        description: Specification, protocol, RFC, ontology.
+      note:
+        description: Free-form note or markdown.
+      unknown:
+        description: Uncategorized source.
+
+
+# ── Classes (Node Types) ─────────────────────────────────────────────
+#
+# Every class declares an is_a: against a malleus root (Entity, Event,
+# Signal, Relation). Mixins contribute cross-cutting slots: Identifiable
+# (id, name), Temporal (created_at, updated_at), Describable (description,
+# tags), Statusable (status). Local attributes add only ET-specific fields.
+
+classes:
+
+  # Entity already mixes in Identifiable + Temporal + Describable, so
+  # subclasses only declare extra mixins (e.g. Statusable) that Entity
+  # doesn't already provide.
+  # Event provides Identifiable + Temporal. Add Describable where needed.
+  # Signal provides Identifiable + Temporal. Add Describable / Statusable
+  # where needed.
+  # Relation provides Identifiable + Temporal.
+
+  Source:
+    is_a: Entity
+    description: >-
+      A capture source — where data was imported or streamed from
+      (a user's ~/.claude/projects, a ChatGPT export, etc.).
+    attributes:
+      platform:
+        range: Platform
+        required: true
+      url:
+        description: Optional URL or path to the source.
+      captured_at:
+        range: datetime
+        description: When this source was first captured.
+
+  Session:
+    is_a: Event
+    mixins:
+      - Describable
+    description: >-
+      A conversation or interaction session — an Event because it happens
+      over an interval, has a cause chain, and bounds a coherent episode.
+    attributes:
+      title:
+        description: Session title (auto-generated or user-provided).
+      source_id:
+        description: ID of the Source this session came from.
+      message_count:
+        range: integer
+      metadata:
+        description: Additional metadata as JSON string.
+    # started_at / ended_at come from malleus Event slots.
+
+  Fragment:
+    is_a: Entity
+    description: >-
+      A discrete piece of content inside a Session — a message, code block,
+      note, or command. The atomic unit of captured thinking.
+    attributes:
+      content:
+        required: true
+        description: The actual text content.
+      role:
+        range: Role
+        description: Role of the author (for conversational fragments).
+      fragment_type:
+        range: FragmentType
+        required: true
+      position:
+        range: integer
+        description: Ordering position within a session.
+
+  Chunk:
+    is_a: Entity
+    description: >-
+      An ingested chunk of memory from a MemoryProvider. Source-of-truth
+      for provenance; referenced by Concept via HasProvenance edges.
+    attributes:
+      source:
+        description: Source path or URL.
+      source_type:
+        range: SourceType
+      t_source_created:
+        range: datetime
+        description: When the user wrote the underlying content.
+      t_ingested:
+        range: datetime
+        description: When ET ingested the chunk.
+
+  Concept:
+    is_a: Entity
+    mixins:
+      - Statusable
+    description: >-
+      An extracted topic, theme, entity, question, decision, or tension.
+      Statusable tracks ACTIVE / deprecated lifecycle; other mixins come
+      from Entity.
+    attributes:
+      category:
+        range: ConceptCategory
+        required: true
+      frequency:
+        range: integer
+        description: How many times this concept has been observed.
+      first_seen:
+        range: datetime
+      last_seen:
+        range: datetime
+      canonical_id:
+        description: >-
+          When two concepts are resolved to the same entity, the non-canonical
+          one points here at the canonical id. Null for active canonicals.
+      access_count:
+        range: integer
+      last_accessed:
+        range: datetime
+      source_quote:
+        description: The user's exact words that demonstrate this concept.
+
+  Insight:
+    is_a: Signal
+    mixins:
+      - Describable
+    description: >-
+      A detected pattern, connection, recurrence, or evolution. A Signal
+      because it is a derived quality that emerges from patterns of events
+      (extractions, relationships) across Entities (concepts, sessions).
+    attributes:
+      title:
+        required: true
+      insight_type:
+        range: InsightType
+        required: true
+      confidence:
+        range: float
+        description: Confidence score (0.0 to 1.0).
+      detected_at:
+        range: datetime
+
+  Wisdom:
+    is_a: Signal
+    mixins:
+      - Describable
+      - Statusable
+    description: >-
+      A synthesized wisdom card generated by the Opus pass over the graph.
+      Statusable because wisdoms flow pending → seen → dismissed.
+    attributes:
+      title:
+        required: true
+      wisdom_type:
+        range: WisdomType
+        required: true
+      based_on_sessions:
+        range: integer
+      based_on_concepts:
+        range: integer
+      related_concept_ids:
+        description: JSON array of concept ids this wisdom cites.
+
+  Suggestion:
+    is_a: Signal
+    mixins:
+      - Describable
+      - Statusable
+    description: >-
+      A proactive recommendation — something the system thinks the user
+      should explore, revisit, connect, or reconsider.
+    attributes:
+      title:
+        required: true
+      suggestion_type:
+        range: SuggestionType
+        required: true
+
+  Rationale:
+    is_a: Signal
+    mixins:
+      - Describable
+    description: >-
+      An LLM-generated justification attached to a subject node. Uses
+      malleus Signal's bearer_id to point at the subject; cited_node_ids
+      enumerates the evidence. The grounded-rationale guarantee (ADR 013
+      C4 / R8) requires every citation to resolve before commit — an
+      ungrounded rationale cannot enter the graph.
+    attributes:
+      text:
+        range: string
+        required: true
+        description: The rationale text, verbatim as produced by the LLM.
+      cited_node_ids:
+        range: string
+        description: JSON array of node ids the rationale cites as evidence.
+
+
+# ── Edges (Relation subclasses) ───────────────────────────────────────
+#
+# Every ET edge type subclasses malleus:Relation. Domain and range are
+# pinned via slot_usage on source_id / target_id so the codegen can emit
+# Kuzu REL tables with matching FROM / TO constraints.
+
+  RelatesTo:
+    is_a: Relation
+    description: >-
+      Concept-to-concept semantic relation. Weighted, with optional context
+      quote describing why they relate. Primary edge in the cognitive graph.
+    slot_usage:
+      source_id:
+        range: Concept
+      target_id:
+        range: Concept
+    attributes:
+      weight:
+        range: float
+        description: Edge strength (accumulates on repeat extraction).
+      context:
+        description: Free-text explanation of the relation.
+      edge_type:
+        description: Sub-kind of RelatesTo (e.g. same-chunk, cross-session).
+      access_count:
+        range: integer
+        description: >-
+          Number of times this edge has been traversed. Drives Physarum
+          decay — frequently traversed edges stay strong, idle edges fade.
+      last_accessed:
+        range: datetime
+        description: Timestamp of the most recent access.
+
+  InformedBy:
+    is_a: Relation
+    description: >-
+      A Wisdom is informed by Concepts. Provenance trail for a synthesized
+      insight back to its evidence.
+    slot_usage:
+      source_id:
+        range: Wisdom
+      target_id:
+        range: Concept
+
+  HasProvenance:
+    is_a: Relation
+    description: >-
+      Concept-to-Chunk provenance edge. Records which chunk (and which LLM
+      extraction pass) produced this concept.
+    slot_usage:
+      source_id:
+        range: Concept
+      target_id:
+        range: Chunk
+    attributes:
+      source_provider:
+        description: Name of the MemoryProvider that supplied the chunk.
+      llm_model:
+        description: Model id that performed the extraction.
+
+  Supersedes:
+    is_a: Relation
+    description: >-
+      A concept supersedes another — e.g. the user changed their mind and
+      the older stance is deprecated. Drives the t_superseded_by bitemporal
+      pointer for truth maintenance (ADR 002).
+    slot_usage:
+      source_id:
+        range: Concept
+      target_id:
+        range: Concept
+    attributes:
+      reason:
+        description: Why the newer concept supersedes the older one.
+
+  ProposalBy:
+    is_a: Relation
+    description: >-
+      Algorithm write-back edge (ADR 013 C7). Records that at time T,
+      plugin P proposed the source→target connection with score S under
+      scope parameters Q. Distinct from committed edges like RelatesTo:
+      a proposal captures what the algorithm said, not what the user or
+      consumer accepted. For MVP this is pinned Concept→Concept; other
+      endpoint pairs land as new subclasses when a consumer needs them.
+    slot_usage:
+      source_id:
+        range: Concept
+      target_id:
+        range: Concept
+    attributes:
+      algorithm:
+        range: string
+        required: true
+        description: Plugin name (e.g. 'weighted_bfs', 'embedding_similarity').
+      parameters_json:
+        range: string
+        description: JSON-encoded parameters used for this invocation.
+      invoked_at:
+        range: datetime
+        required: true
+        description: When the algorithm was invoked.
+      score:
+        range: float
+        description: Algorithm-specific score attached to this proposal.
+
+  # ── ADR 011: proactive knowledge enrichment ─────────────────────────
+
+  KnowledgeNode:
+    is_a: Signal
+    mixins:
+      - Describable
+    description: >-
+      An external knowledge item (Wikipedia article, arXiv paper, Fowler
+      refactoring, etc.) attached to a user-facing concept. Signal
+      because it is a derived quality — the source's representation of
+      a topic — inhering in its bearer concept via Signal.bearer_id.
+      Namespace convention: `enrichment:<source_kind>` (ADR 011 v2).
+    attributes:
+      source_kind:
+        range: string
+        required: true
+        description: Canonical source name ('wikipedia', 'arxiv', 'fowler', ...).
+      external_id:
+        range: string
+        required: true
+        description: Source-native id (Wikidata QID, arXiv ID, Fowler slug).
+      url:
+        range: string
+      title:
+        range: string
+        required: true
+      abstract:
+        range: string
+        description: Text representation indexed for semantic recall.
+      theme:
+        range: string
+        description: >-
+          JSON array of theme tags for sub-classification within a
+          source. Multi-theme membership allowed. Source plugins
+          populate this (Wikipedia via LLM classifier, arXiv via native
+          category IDs, etc.). Empty means unclassified.
+
+  Enriches:
+    is_a: Relation
+    description: >-
+      Connects a user-facing node to external knowledge (ADR 011 v2).
+      FROM spans Concept / Wisdom for now; consumer ontologies extend
+      via slot_usage delta to include their own typed nodes.
+    slot_usage:
+      source_id:
+        range: Concept
+      target_id:
+        range: KnowledgeNode
+    attributes:
+      relevance:
+        range: float
+        description: Final score from the gate sequence (0..1).
+      trigger:
+        range: string
+        description: Which trigger fired (frequency_threshold, cluster_formed, ...).
+      gate_verdicts:
+        range: string
+        description: JSON array of per-gate verdicts {plugin, score, outcome}.
+
+  WisdomEnriches:
+    is_a: Relation
+    description: >-
+      Wisdom → KnowledgeNode variant of Enriches. Separate subclass
+      because Kuzu's REL DDL requires FROM/TO types declared per REL
+      table. Future consumer subclasses (HypothesisEnriches etc.) follow
+      the same pattern (ADR 011 v2 multi-pair decision).
+    slot_usage:
+      source_id:
+        range: Wisdom
+      target_id:
+        range: KnowledgeNode
+    attributes:
+      relevance:
+        range: float
+      trigger:
+        range: string
+      gate_verdicts:
+        range: string
+
+  EnrichmentRun:
+    is_a: Event
+    mixins:
+      - Describable
+    description: >-
+      Telemetry for a single enrichment invocation (ADR 011 v2). One
+      node per trigger-fire-per-source-per-concept. Queryable via
+      et_shift(node_types=["EnrichmentRun"]) so users and algorithms
+      can tune thresholds based on real data rather than guesswork.
+    attributes:
+      trigger_name:
+        range: string
+        required: true
+      source_kind:
+        range: string
+        required: true
+      concept_id:
+        range: string
+        required: true
+        description: The user-facing node whose context fired the enrichment.
+      candidates_returned:
+        range: integer
+      candidates_accepted:
+        range: integer
+      gate_trace:
+        range: string
+        description: "JSON: per-gate {counts_in, counts_out, score_histogram}."
+      duration_ms:
+        range: integer
+      error:
+        range: string
+        description: Non-empty if the run failed (e.g. Wikipedia 5xx). Enables retry queries.

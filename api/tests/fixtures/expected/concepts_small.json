@@ -1,0 +1,23 @@
+{
+  "_comment": "Ground-truth concepts for session_small.jsonl + notes_small/. Hand-derived from the fixture content. Test assertions use these as membership checks (not exact-match) since LLM extraction phrasing varies.",
+  "concepts": [
+    {"id": "kuzu", "name": "Kuzu", "category": "entity",
+     "rationale": "Embedded graph DB chosen for the KG layer. Named explicitly in both session and notes."},
+    {"id": "sqlite", "name": "SQLite", "category": "entity",
+     "rationale": "Rejected candidate, explicitly considered and discarded."},
+    {"id": "bitemporal_kg", "name": "Bitemporal Knowledge Graph", "category": "topic",
+     "rationale": "Central topic across session and notes. Valid_time + transaction_time."},
+    {"id": "kg_store_choice", "name": "KG store choice", "category": "decision",
+     "rationale": "Decision frame: which backend for the knowledge graph."},
+    {"id": "chromadb", "name": "ChromaDB", "category": "entity",
+     "rationale": "Vector store, kept alongside Kuzu. Mentioned in both fixtures."},
+    {"id": "concept_store_legacy", "name": "ConceptStore (legacy)", "category": "tension",
+     "rationale": "SQLite-based store marked deprecated; tension between migration speed and no-new-writes guard."}
+  ],
+  "expected_relationships": [
+    {"from": "kg_store_choice", "to": "kuzu", "why": "decision selects Kuzu"},
+    {"from": "kg_store_choice", "to": "sqlite", "why": "decision rejects SQLite"},
+    {"from": "kuzu", "to": "bitemporal_kg", "why": "Kuzu supports bitemporal edges"},
+    {"from": "chromadb", "to": "kuzu", "why": "paired stores at the storage layer"}
+  ]
+}
