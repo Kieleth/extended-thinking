@@ -208,10 +208,19 @@ class TestConstitutiveDomainRange:
 
 # ── Regenerability ────────────────────────────────────────────────────
 
+_MALLEUS_IMPORT = Path(__file__).resolve().parents[2] / "schema" / "imports" / "malleus.yaml"
+
+
 class TestRegenerability:
     """`make schema-kuzu` must be idempotent: regenerating produces
     byte-identical output. Without this, CI drift-checks become flaky."""
 
+    @pytest.mark.skipif(
+        not _MALLEUS_IMPORT.exists(),
+        reason="malleus ontology not resolvable in this environment "
+               "(symlink to sibling repo broken). Skipped until malleus-dev "
+               "lands on PyPI and CI can install it.",
+    )
     def test_two_runs_produce_identical_output(self, tmp_path, monkeypatch):
         from scripts import gen_kuzu
         from linkml_runtime.utils.schemaview import SchemaView

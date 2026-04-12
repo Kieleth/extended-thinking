@@ -279,8 +279,17 @@ class TestAgainstLiveKuzu:
 
 # ── Regenerability ────────────────────────────────────────────────────
 
+_MALLEUS_IMPORT = Path(__file__).resolve().parents[2] / "schema" / "imports" / "malleus.yaml"
+
+
 class TestRegenerability:
 
+    @pytest.mark.skipif(
+        not _MALLEUS_IMPORT.exists(),
+        reason="malleus ontology not resolvable in this environment "
+               "(symlink to sibling repo broken). Skipped until malleus-dev "
+               "lands on PyPI and CI can install it.",
+    )
     def test_two_runs_byte_identical(self):
         """`make schema-kuzu` must be deterministic."""
         from scripts.gen_kuzu_types import _collect_class_info, _render_module, SCHEMA_PATH
