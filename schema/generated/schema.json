@@ -1,0 +1,2205 @@
+{
+    "$defs": {
+        "Agent": {
+            "additionalProperties": false,
+            "description": "Capability of acting, deciding, or bearing responsibility. Aligned with PROV:Agent and BDI model. Agency is a trait, not a taxonomic position: an entity CAN act, it is not defined by acting. Apply this mixin to any entity class that needs volitional behavior.",
+            "properties": {
+                "agent_type": {
+                    "description": "Classification of the agent. Domain projects should constrain this to an enum.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                }
+            },
+            "title": "Agent",
+            "type": "object"
+        },
+        "Chunk": {
+            "additionalProperties": false,
+            "description": "An ingested chunk of memory from a MemoryProvider. Source-of-truth for provenance; referenced by Concept via HasProvenance edges.",
+            "properties": {
+                "created_at": {
+                    "description": "When this was created.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "description": {
+                    "description": "Free-text description.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "id": {
+                    "description": "Globally unique identifier.",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Human-readable name.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "source": {
+                    "description": "Source path or URL.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "source_type": {
+                    "$ref": "#/$defs/SourceType"
+                },
+                "t_ingested": {
+                    "description": "When ET ingested the chunk.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "t_source_created": {
+                    "description": "When the user wrote the underlying content.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "tags": {
+                    "description": "Arbitrary classification tags.",
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": [
+                        "array",
+                        "null"
+                    ]
+                },
+                "updated_at": {
+                    "description": "When this was last modified.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                }
+            },
+            "required": [
+                "id"
+            ],
+            "title": "Chunk",
+            "type": "object"
+        },
+        "Concept": {
+            "additionalProperties": false,
+            "description": "An extracted topic, theme, entity, question, decision, or tension. Statusable tracks ACTIVE / deprecated lifecycle; other mixins come from Entity.",
+            "properties": {
+                "access_count": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ]
+                },
+                "canonical_id": {
+                    "description": "When two concepts are resolved to the same entity, the non-canonical one points here at the canonical id. Null for active canonicals.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "category": {
+                    "$ref": "#/$defs/ConceptCategory"
+                },
+                "created_at": {
+                    "description": "When this was created.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "description": {
+                    "description": "Free-text description.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "first_seen": {
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "frequency": {
+                    "description": "How many times this concept has been observed.",
+                    "type": [
+                        "integer",
+                        "null"
+                    ]
+                },
+                "id": {
+                    "description": "Globally unique identifier.",
+                    "type": "string"
+                },
+                "last_accessed": {
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "last_seen": {
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "name": {
+                    "description": "Human-readable name.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "source_quote": {
+                    "description": "The user's exact words that demonstrate this concept.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "status": {
+                    "$ref": "#/$defs/EntityStatus",
+                    "description": "Lifecycle status."
+                },
+                "tags": {
+                    "description": "Arbitrary classification tags.",
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": [
+                        "array",
+                        "null"
+                    ]
+                },
+                "updated_at": {
+                    "description": "When this was last modified.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                }
+            },
+            "required": [
+                "category",
+                "id"
+            ],
+            "title": "Concept",
+            "type": "object"
+        },
+        "ConceptCategory": {
+            "description": "Category of an extracted concept.",
+            "enum": [
+                "topic",
+                "theme",
+                "entity",
+                "question",
+                "decision",
+                "tension"
+            ],
+            "title": "ConceptCategory",
+            "type": "string"
+        },
+        "Describable": {
+            "additionalProperties": false,
+            "description": "Human-readable description and metadata.",
+            "properties": {
+                "description": {
+                    "description": "Free-text description.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "tags": {
+                    "description": "Arbitrary classification tags.",
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": [
+                        "array",
+                        "null"
+                    ]
+                }
+            },
+            "title": "Describable",
+            "type": "object"
+        },
+        "Enriches": {
+            "additionalProperties": false,
+            "description": "Connects a user-facing node to external knowledge (ADR 011 v2). FROM spans Concept / Wisdom for now; consumer ontologies extend via slot_usage delta to include their own typed nodes.",
+            "properties": {
+                "created_at": {
+                    "description": "When this was created.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "gate_verdicts": {
+                    "description": "JSON array of per-gate verdicts {plugin, score, outcome}.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "id": {
+                    "description": "Globally unique identifier.",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Human-readable name.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "relation_type": {
+                    "description": "The type of relation (has_part, contains, depends_on, etc.). Domain projects should constrain this to an enum.",
+                    "type": "string"
+                },
+                "relevance": {
+                    "description": "Final score from the gate sequence (0..1).",
+                    "type": [
+                        "number",
+                        "null"
+                    ]
+                },
+                "source_id": {
+                    "description": "ID of the source entity.",
+                    "type": "string"
+                },
+                "strength": {
+                    "description": "Weight or confidence of the relation (0.0 to 1.0).",
+                    "type": [
+                        "number",
+                        "null"
+                    ]
+                },
+                "target_id": {
+                    "description": "ID of the target entity.",
+                    "type": "string"
+                },
+                "trigger": {
+                    "description": "Which trigger fired (frequency_threshold, cluster_formed, ...).",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "updated_at": {
+                    "description": "When this was last modified.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                }
+            },
+            "required": [
+                "relation_type",
+                "source_id",
+                "target_id",
+                "id"
+            ],
+            "title": "Enriches",
+            "type": "object"
+        },
+        "EnrichmentRun": {
+            "additionalProperties": false,
+            "description": "Telemetry for a single enrichment invocation (ADR 011 v2). One node per trigger-fire-per-source-per-concept. Queryable via et_shift(node_types=[\"EnrichmentRun\"]) so users and algorithms can tune thresholds based on real data rather than guesswork.",
+            "properties": {
+                "candidates_accepted": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ]
+                },
+                "candidates_returned": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ]
+                },
+                "caused_by": {
+                    "description": "ID of the event or agent that caused this event. Follows PROV-O wasInformedBy / wasAssociatedWith pattern.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "concept_id": {
+                    "description": "The user-facing node whose context fired the enrichment.",
+                    "type": "string"
+                },
+                "created_at": {
+                    "description": "When this was created.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "description": {
+                    "description": "Free-text description.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "duration_ms": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ]
+                },
+                "ended_at": {
+                    "description": "When a duration event ended.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "error": {
+                    "description": "Non-empty if the run failed (e.g. Wikipedia 5xx). Enables retry queries.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "event_type": {
+                    "description": "Classification of the event. Domain projects should constrain this to an enum.",
+                    "type": "string"
+                },
+                "gate_trace": {
+                    "description": "JSON: per-gate {counts_in, counts_out, score_histogram}.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "id": {
+                    "description": "Globally unique identifier.",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Human-readable name.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "occurred_at": {
+                    "description": "When the event happened (instantaneous events).",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "source_kind": {
+                    "type": "string"
+                },
+                "started_at": {
+                    "description": "When a duration event began.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "tags": {
+                    "description": "Arbitrary classification tags.",
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": [
+                        "array",
+                        "null"
+                    ]
+                },
+                "trigger_name": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "description": "When this was last modified.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                }
+            },
+            "required": [
+                "trigger_name",
+                "source_kind",
+                "concept_id",
+                "event_type",
+                "id"
+            ],
+            "title": "EnrichmentRun",
+            "type": "object"
+        },
+        "Entity": {
+            "additionalProperties": false,
+            "description": "Root class for all identifiable, enduring things. Aligned with BFO:Independent Continuant. Every domain object that persists through time and needs identity extends this.",
+            "properties": {
+                "created_at": {
+                    "description": "When this was created.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "description": {
+                    "description": "Free-text description.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "id": {
+                    "description": "Globally unique identifier.",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Human-readable name.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "tags": {
+                    "description": "Arbitrary classification tags.",
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": [
+                        "array",
+                        "null"
+                    ]
+                },
+                "updated_at": {
+                    "description": "When this was last modified.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                }
+            },
+            "required": [
+                "id"
+            ],
+            "title": "Entity",
+            "type": "object"
+        },
+        "EntityStatus": {
+            "description": "Lifecycle state of any identifiable entity.",
+            "enum": [
+                "ACTIVE",
+                "INACTIVE",
+                "DESTROYED"
+            ],
+            "title": "EntityStatus",
+            "type": "string"
+        },
+        "Event": {
+            "additionalProperties": false,
+            "description": "Something that happens at a point or over an interval. Aligned with BFO:Occurrent / PROV:Activity. Instantaneous events use occurred_at. Processes with duration use started_at / ended_at (Allen's interval algebra).",
+            "properties": {
+                "caused_by": {
+                    "description": "ID of the event or agent that caused this event. Follows PROV-O wasInformedBy / wasAssociatedWith pattern.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "created_at": {
+                    "description": "When this was created.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "ended_at": {
+                    "description": "When a duration event ended.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "event_type": {
+                    "description": "Classification of the event. Domain projects should constrain this to an enum.",
+                    "type": "string"
+                },
+                "id": {
+                    "description": "Globally unique identifier.",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Human-readable name.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "occurred_at": {
+                    "description": "When the event happened (instantaneous events).",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "started_at": {
+                    "description": "When a duration event began.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "updated_at": {
+                    "description": "When this was last modified.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                }
+            },
+            "required": [
+                "event_type",
+                "id"
+            ],
+            "title": "Event",
+            "type": "object"
+        },
+        "Fragment": {
+            "additionalProperties": false,
+            "description": "A discrete piece of content inside a Session \u2014 a message, code block, note, or command. The atomic unit of captured thinking.",
+            "properties": {
+                "content": {
+                    "description": "The actual text content.",
+                    "type": "string"
+                },
+                "created_at": {
+                    "description": "When this was created.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "description": {
+                    "description": "Free-text description.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "fragment_type": {
+                    "$ref": "#/$defs/FragmentType"
+                },
+                "id": {
+                    "description": "Globally unique identifier.",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Human-readable name.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "position": {
+                    "description": "Ordering position within a session.",
+                    "type": [
+                        "integer",
+                        "null"
+                    ]
+                },
+                "role": {
+                    "$ref": "#/$defs/Role",
+                    "description": "Role of the author (for conversational fragments)."
+                },
+                "tags": {
+                    "description": "Arbitrary classification tags.",
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": [
+                        "array",
+                        "null"
+                    ]
+                },
+                "updated_at": {
+                    "description": "When this was last modified.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                }
+            },
+            "required": [
+                "content",
+                "fragment_type",
+                "id"
+            ],
+            "title": "Fragment",
+            "type": "object"
+        },
+        "FragmentType": {
+            "description": "Type of content fragment.",
+            "enum": [
+                "message",
+                "code",
+                "note",
+                "command"
+            ],
+            "title": "FragmentType",
+            "type": "string"
+        },
+        "HasProvenance": {
+            "additionalProperties": false,
+            "description": "Concept-to-Chunk provenance edge. Records which chunk (and which LLM extraction pass) produced this concept.",
+            "properties": {
+                "created_at": {
+                    "description": "When this was created.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "id": {
+                    "description": "Globally unique identifier.",
+                    "type": "string"
+                },
+                "llm_model": {
+                    "description": "Model id that performed the extraction.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "name": {
+                    "description": "Human-readable name.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "relation_type": {
+                    "description": "The type of relation (has_part, contains, depends_on, etc.). Domain projects should constrain this to an enum.",
+                    "type": "string"
+                },
+                "source_id": {
+                    "description": "ID of the source entity.",
+                    "type": "string"
+                },
+                "source_provider": {
+                    "description": "Name of the MemoryProvider that supplied the chunk.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "strength": {
+                    "description": "Weight or confidence of the relation (0.0 to 1.0).",
+                    "type": [
+                        "number",
+                        "null"
+                    ]
+                },
+                "target_id": {
+                    "description": "ID of the target entity.",
+                    "type": "string"
+                },
+                "updated_at": {
+                    "description": "When this was last modified.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                }
+            },
+            "required": [
+                "relation_type",
+                "source_id",
+                "target_id",
+                "id"
+            ],
+            "title": "HasProvenance",
+            "type": "object"
+        },
+        "Identifiable": {
+            "additionalProperties": false,
+            "description": "Anything with a stable, globally unique identity. Aligned with BFO Independent Continuant: exists on its own, bears qualities, participates in processes.",
+            "properties": {
+                "id": {
+                    "description": "Globally unique identifier.",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Human-readable name.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                }
+            },
+            "required": [
+                "id"
+            ],
+            "title": "Identifiable",
+            "type": "object"
+        },
+        "InformedBy": {
+            "additionalProperties": false,
+            "description": "A Wisdom is informed by Concepts. Provenance trail for a synthesized insight back to its evidence.",
+            "properties": {
+                "created_at": {
+                    "description": "When this was created.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "id": {
+                    "description": "Globally unique identifier.",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Human-readable name.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "relation_type": {
+                    "description": "The type of relation (has_part, contains, depends_on, etc.). Domain projects should constrain this to an enum.",
+                    "type": "string"
+                },
+                "source_id": {
+                    "description": "ID of the source entity.",
+                    "type": "string"
+                },
+                "strength": {
+                    "description": "Weight or confidence of the relation (0.0 to 1.0).",
+                    "type": [
+                        "number",
+                        "null"
+                    ]
+                },
+                "target_id": {
+                    "description": "ID of the target entity.",
+                    "type": "string"
+                },
+                "updated_at": {
+                    "description": "When this was last modified.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                }
+            },
+            "required": [
+                "relation_type",
+                "source_id",
+                "target_id",
+                "id"
+            ],
+            "title": "InformedBy",
+            "type": "object"
+        },
+        "Insight": {
+            "additionalProperties": false,
+            "description": "A detected pattern, connection, recurrence, or evolution. A Signal because it is a derived quality that emerges from patterns of events (extractions, relationships) across Entities (concepts, sessions).",
+            "properties": {
+                "algorithm": {
+                    "description": "Name or reference of the computation that produces this signal. Domain projects should document algorithms and constrain this to an enum. Examples: appleseed, pagerank, ewma, linear_decay.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "bearer_id": {
+                    "description": "ID of the entity (or relationship) this signal inheres in. Required because a Signal cannot exist without a bearer (BFO: dependent continuant).",
+                    "type": "string"
+                },
+                "computed_at": {
+                    "description": "When this signal value was last computed.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "confidence": {
+                    "description": "Confidence score (0.0 to 1.0).",
+                    "type": [
+                        "number",
+                        "null"
+                    ]
+                },
+                "created_at": {
+                    "description": "When this was created.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "description": {
+                    "description": "Free-text description.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "detected_at": {
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "id": {
+                    "description": "Globally unique identifier.",
+                    "type": "string"
+                },
+                "insight_type": {
+                    "$ref": "#/$defs/InsightType"
+                },
+                "name": {
+                    "description": "Human-readable name.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "perspective": {
+                    "description": "ID of the entity from whose perspective this signal is computed. Null for global/objective signals (e.g., graph density). Set for subjective signals (e.g., trust computed from one agent's viewpoint).",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "signal_type": {
+                    "description": "Classification of the signal. Domain projects should constrain this to an enum. Examples: trust_score, health_score, centrality.",
+                    "type": "string"
+                },
+                "tags": {
+                    "description": "Arbitrary classification tags.",
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": [
+                        "array",
+                        "null"
+                    ]
+                },
+                "title": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "description": "When this was last modified.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "value": {
+                    "description": "Current computed value. Interpretation is signal-type specific. Often 0.0\u20131.0 but not constrained at the root level (domain decides range and semantics).",
+                    "type": [
+                        "number",
+                        "null"
+                    ]
+                }
+            },
+            "required": [
+                "title",
+                "insight_type",
+                "signal_type",
+                "bearer_id",
+                "id"
+            ],
+            "title": "Insight",
+            "type": "object"
+        },
+        "InsightType": {
+            "description": "Type of detected insight.",
+            "enum": [
+                "pattern",
+                "connection",
+                "recurrence",
+                "evolution"
+            ],
+            "title": "InsightType",
+            "type": "string"
+        },
+        "KnowledgeNode": {
+            "additionalProperties": false,
+            "description": "An external knowledge item (Wikipedia article, arXiv paper, Fowler refactoring, etc.) attached to a user-facing concept. Signal because it is a derived quality \u2014 the source's representation of a topic \u2014 inhering in its bearer concept via Signal.bearer_id. Namespace convention: `enrichment:<source_kind>` (ADR 011 v2).",
+            "properties": {
+                "abstract": {
+                    "description": "Text representation indexed for semantic recall.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "algorithm": {
+                    "description": "Name or reference of the computation that produces this signal. Domain projects should document algorithms and constrain this to an enum. Examples: appleseed, pagerank, ewma, linear_decay.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "bearer_id": {
+                    "description": "ID of the entity (or relationship) this signal inheres in. Required because a Signal cannot exist without a bearer (BFO: dependent continuant).",
+                    "type": "string"
+                },
+                "computed_at": {
+                    "description": "When this signal value was last computed.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "created_at": {
+                    "description": "When this was created.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "description": {
+                    "description": "Free-text description.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "external_id": {
+                    "description": "Source-native id (Wikidata QID, arXiv ID, Fowler slug).",
+                    "type": "string"
+                },
+                "id": {
+                    "description": "Globally unique identifier.",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Human-readable name.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "perspective": {
+                    "description": "ID of the entity from whose perspective this signal is computed. Null for global/objective signals (e.g., graph density). Set for subjective signals (e.g., trust computed from one agent's viewpoint).",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "signal_type": {
+                    "description": "Classification of the signal. Domain projects should constrain this to an enum. Examples: trust_score, health_score, centrality.",
+                    "type": "string"
+                },
+                "source_kind": {
+                    "description": "Canonical source name ('wikipedia', 'arxiv', 'fowler', ...).",
+                    "type": "string"
+                },
+                "tags": {
+                    "description": "Arbitrary classification tags.",
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": [
+                        "array",
+                        "null"
+                    ]
+                },
+                "theme": {
+                    "description": "JSON array of theme tags for sub-classification within a source. Multi-theme membership allowed. Source plugins populate this (Wikipedia via LLM classifier, arXiv via native category IDs, etc.). Empty means unclassified.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "title": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "description": "When this was last modified.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "url": {
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "value": {
+                    "description": "Current computed value. Interpretation is signal-type specific. Often 0.0\u20131.0 but not constrained at the root level (domain decides range and semantics).",
+                    "type": [
+                        "number",
+                        "null"
+                    ]
+                }
+            },
+            "required": [
+                "source_kind",
+                "external_id",
+                "title",
+                "signal_type",
+                "bearer_id",
+                "id"
+            ],
+            "title": "KnowledgeNode",
+            "type": "object"
+        },
+        "Platform": {
+            "description": "Source platform where content was captured.",
+            "enum": [
+                "claude_code",
+                "opencode",
+                "chatgpt",
+                "claude_ai",
+                "slack",
+                "browser",
+                "native",
+                "manual"
+            ],
+            "title": "Platform",
+            "type": "string"
+        },
+        "ProposalBy": {
+            "additionalProperties": false,
+            "description": "Algorithm write-back edge (ADR 013 C7). Records that at time T, plugin P proposed the source\u2192target connection with score S under scope parameters Q. Distinct from committed edges like RelatesTo: a proposal captures what the algorithm said, not what the user or consumer accepted. For MVP this is pinned Concept\u2192Concept; other endpoint pairs land as new subclasses when a consumer needs them.",
+            "properties": {
+                "algorithm": {
+                    "description": "Plugin name (e.g. 'weighted_bfs', 'embedding_similarity').",
+                    "type": "string"
+                },
+                "created_at": {
+                    "description": "When this was created.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "id": {
+                    "description": "Globally unique identifier.",
+                    "type": "string"
+                },
+                "invoked_at": {
+                    "description": "When the algorithm was invoked.",
+                    "format": "date-time",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Human-readable name.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "parameters_json": {
+                    "description": "JSON-encoded parameters used for this invocation.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "relation_type": {
+                    "description": "The type of relation (has_part, contains, depends_on, etc.). Domain projects should constrain this to an enum.",
+                    "type": "string"
+                },
+                "score": {
+                    "description": "Algorithm-specific score attached to this proposal.",
+                    "type": [
+                        "number",
+                        "null"
+                    ]
+                },
+                "source_id": {
+                    "description": "ID of the source entity.",
+                    "type": "string"
+                },
+                "strength": {
+                    "description": "Weight or confidence of the relation (0.0 to 1.0).",
+                    "type": [
+                        "number",
+                        "null"
+                    ]
+                },
+                "target_id": {
+                    "description": "ID of the target entity.",
+                    "type": "string"
+                },
+                "updated_at": {
+                    "description": "When this was last modified.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                }
+            },
+            "required": [
+                "algorithm",
+                "invoked_at",
+                "relation_type",
+                "source_id",
+                "target_id",
+                "id"
+            ],
+            "title": "ProposalBy",
+            "type": "object"
+        },
+        "Rationale": {
+            "additionalProperties": false,
+            "description": "An LLM-generated justification attached to a subject node. Uses malleus Signal's bearer_id to point at the subject; cited_node_ids enumerates the evidence. The grounded-rationale guarantee (ADR 013 C4 / R8) requires every citation to resolve before commit \u2014 an ungrounded rationale cannot enter the graph.",
+            "properties": {
+                "algorithm": {
+                    "description": "Name or reference of the computation that produces this signal. Domain projects should document algorithms and constrain this to an enum. Examples: appleseed, pagerank, ewma, linear_decay.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "bearer_id": {
+                    "description": "ID of the entity (or relationship) this signal inheres in. Required because a Signal cannot exist without a bearer (BFO: dependent continuant).",
+                    "type": "string"
+                },
+                "cited_node_ids": {
+                    "description": "JSON array of node ids the rationale cites as evidence.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "computed_at": {
+                    "description": "When this signal value was last computed.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "created_at": {
+                    "description": "When this was created.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "description": {
+                    "description": "Free-text description.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "id": {
+                    "description": "Globally unique identifier.",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Human-readable name.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "perspective": {
+                    "description": "ID of the entity from whose perspective this signal is computed. Null for global/objective signals (e.g., graph density). Set for subjective signals (e.g., trust computed from one agent's viewpoint).",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "signal_type": {
+                    "description": "Classification of the signal. Domain projects should constrain this to an enum. Examples: trust_score, health_score, centrality.",
+                    "type": "string"
+                },
+                "tags": {
+                    "description": "Arbitrary classification tags.",
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": [
+                        "array",
+                        "null"
+                    ]
+                },
+                "text": {
+                    "description": "The rationale text, verbatim as produced by the LLM.",
+                    "type": "string"
+                },
+                "updated_at": {
+                    "description": "When this was last modified.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "value": {
+                    "description": "Current computed value. Interpretation is signal-type specific. Often 0.0\u20131.0 but not constrained at the root level (domain decides range and semantics).",
+                    "type": [
+                        "number",
+                        "null"
+                    ]
+                }
+            },
+            "required": [
+                "text",
+                "signal_type",
+                "bearer_id",
+                "id"
+            ],
+            "title": "Rationale",
+            "type": "object"
+        },
+        "RelatesTo": {
+            "additionalProperties": false,
+            "description": "Concept-to-concept semantic relation. Weighted, with optional context quote describing why they relate. Primary edge in the cognitive graph.",
+            "properties": {
+                "access_count": {
+                    "description": "Number of times this edge has been traversed. Drives Physarum decay \u2014 frequently traversed edges stay strong, idle edges fade.",
+                    "type": [
+                        "integer",
+                        "null"
+                    ]
+                },
+                "context": {
+                    "description": "Free-text explanation of the relation.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "created_at": {
+                    "description": "When this was created.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "edge_type": {
+                    "description": "Sub-kind of RelatesTo (e.g. same-chunk, cross-session).",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "id": {
+                    "description": "Globally unique identifier.",
+                    "type": "string"
+                },
+                "last_accessed": {
+                    "description": "Timestamp of the most recent access.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "name": {
+                    "description": "Human-readable name.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "relation_type": {
+                    "description": "The type of relation (has_part, contains, depends_on, etc.). Domain projects should constrain this to an enum.",
+                    "type": "string"
+                },
+                "source_id": {
+                    "description": "ID of the source entity.",
+                    "type": "string"
+                },
+                "strength": {
+                    "description": "Weight or confidence of the relation (0.0 to 1.0).",
+                    "type": [
+                        "number",
+                        "null"
+                    ]
+                },
+                "target_id": {
+                    "description": "ID of the target entity.",
+                    "type": "string"
+                },
+                "updated_at": {
+                    "description": "When this was last modified.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "weight": {
+                    "description": "Edge strength (accumulates on repeat extraction).",
+                    "type": [
+                        "number",
+                        "null"
+                    ]
+                }
+            },
+            "required": [
+                "relation_type",
+                "source_id",
+                "target_id",
+                "id"
+            ],
+            "title": "RelatesTo",
+            "type": "object"
+        },
+        "Relation": {
+            "additionalProperties": false,
+            "description": "A typed, directed edge between two entities. Reified as a class so relations can carry metadata (strength, confidence, temporal validity).",
+            "properties": {
+                "created_at": {
+                    "description": "When this was created.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "id": {
+                    "description": "Globally unique identifier.",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Human-readable name.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "relation_type": {
+                    "description": "The type of relation (has_part, contains, depends_on, etc.). Domain projects should constrain this to an enum.",
+                    "type": "string"
+                },
+                "source_id": {
+                    "description": "ID of the source entity.",
+                    "type": "string"
+                },
+                "strength": {
+                    "description": "Weight or confidence of the relation (0.0 to 1.0).",
+                    "type": [
+                        "number",
+                        "null"
+                    ]
+                },
+                "target_id": {
+                    "description": "ID of the target entity.",
+                    "type": "string"
+                },
+                "updated_at": {
+                    "description": "When this was last modified.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                }
+            },
+            "required": [
+                "relation_type",
+                "source_id",
+                "target_id",
+                "id"
+            ],
+            "title": "Relation",
+            "type": "object"
+        },
+        "Role": {
+            "description": "Role of the message author.",
+            "enum": [
+                "user",
+                "assistant",
+                "system"
+            ],
+            "title": "Role",
+            "type": "string"
+        },
+        "Session": {
+            "additionalProperties": false,
+            "description": "A conversation or interaction session \u2014 an Event because it happens over an interval, has a cause chain, and bounds a coherent episode.",
+            "properties": {
+                "caused_by": {
+                    "description": "ID of the event or agent that caused this event. Follows PROV-O wasInformedBy / wasAssociatedWith pattern.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "created_at": {
+                    "description": "When this was created.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "description": {
+                    "description": "Free-text description.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "ended_at": {
+                    "description": "When a duration event ended.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "event_type": {
+                    "description": "Classification of the event. Domain projects should constrain this to an enum.",
+                    "type": "string"
+                },
+                "id": {
+                    "description": "Globally unique identifier.",
+                    "type": "string"
+                },
+                "message_count": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ]
+                },
+                "metadata": {
+                    "description": "Additional metadata as JSON string.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "name": {
+                    "description": "Human-readable name.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "occurred_at": {
+                    "description": "When the event happened (instantaneous events).",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "source_id": {
+                    "description": "ID of the Source this session came from.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "started_at": {
+                    "description": "When a duration event began.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "tags": {
+                    "description": "Arbitrary classification tags.",
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": [
+                        "array",
+                        "null"
+                    ]
+                },
+                "title": {
+                    "description": "Session title (auto-generated or user-provided).",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "updated_at": {
+                    "description": "When this was last modified.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                }
+            },
+            "required": [
+                "event_type",
+                "id"
+            ],
+            "title": "Session",
+            "type": "object"
+        },
+        "Signal": {
+            "additionalProperties": false,
+            "description": "A continuously derived quality that emerges from patterns of Events between Entities. Aligned with BFO:Specifically Dependent Continuant (Quality) and SSN/SOSA:Observation. A Signal inheres in its bearer(s) \u2014 it does not exist independently. It is computed, not asserted: derived on demand from the Event log and Entity graph via a named algorithm. Domain projects define signal types, algorithms, and interpretation semantics. The Signal class captures the universal pattern: something measurable that emerges from activity, has a current value, and is recomputable from the underlying data.",
+            "properties": {
+                "algorithm": {
+                    "description": "Name or reference of the computation that produces this signal. Domain projects should document algorithms and constrain this to an enum. Examples: appleseed, pagerank, ewma, linear_decay.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "bearer_id": {
+                    "description": "ID of the entity (or relationship) this signal inheres in. Required because a Signal cannot exist without a bearer (BFO: dependent continuant).",
+                    "type": "string"
+                },
+                "computed_at": {
+                    "description": "When this signal value was last computed.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "created_at": {
+                    "description": "When this was created.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "id": {
+                    "description": "Globally unique identifier.",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Human-readable name.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "perspective": {
+                    "description": "ID of the entity from whose perspective this signal is computed. Null for global/objective signals (e.g., graph density). Set for subjective signals (e.g., trust computed from one agent's viewpoint).",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "signal_type": {
+                    "description": "Classification of the signal. Domain projects should constrain this to an enum. Examples: trust_score, health_score, centrality.",
+                    "type": "string"
+                },
+                "updated_at": {
+                    "description": "When this was last modified.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "value": {
+                    "description": "Current computed value. Interpretation is signal-type specific. Often 0.0\u20131.0 but not constrained at the root level (domain decides range and semantics).",
+                    "type": [
+                        "number",
+                        "null"
+                    ]
+                }
+            },
+            "required": [
+                "signal_type",
+                "bearer_id",
+                "id"
+            ],
+            "title": "Signal",
+            "type": "object"
+        },
+        "Source": {
+            "additionalProperties": false,
+            "description": "A capture source \u2014 where data was imported or streamed from (a user's ~/.claude/projects, a ChatGPT export, etc.).",
+            "properties": {
+                "captured_at": {
+                    "description": "When this source was first captured.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "created_at": {
+                    "description": "When this was created.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "description": {
+                    "description": "Free-text description.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "id": {
+                    "description": "Globally unique identifier.",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Human-readable name.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "platform": {
+                    "$ref": "#/$defs/Platform"
+                },
+                "tags": {
+                    "description": "Arbitrary classification tags.",
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": [
+                        "array",
+                        "null"
+                    ]
+                },
+                "updated_at": {
+                    "description": "When this was last modified.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "url": {
+                    "description": "Optional URL or path to the source.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                }
+            },
+            "required": [
+                "platform",
+                "id"
+            ],
+            "title": "Source",
+            "type": "object"
+        },
+        "SourceType": {
+            "description": "Classification of a chunk's source material.",
+            "enum": [
+                "conversation",
+                "documentation",
+                "spec",
+                "note",
+                "unknown"
+            ],
+            "title": "SourceType",
+            "type": "string"
+        },
+        "Statusable": {
+            "additionalProperties": false,
+            "description": "Entity with a lifecycle status.",
+            "properties": {
+                "status": {
+                    "$ref": "#/$defs/EntityStatus",
+                    "description": "Lifecycle status."
+                }
+            },
+            "title": "Statusable",
+            "type": "object"
+        },
+        "Suggestion": {
+            "additionalProperties": false,
+            "description": "A proactive recommendation \u2014 something the system thinks the user should explore, revisit, connect, or reconsider.",
+            "properties": {
+                "algorithm": {
+                    "description": "Name or reference of the computation that produces this signal. Domain projects should document algorithms and constrain this to an enum. Examples: appleseed, pagerank, ewma, linear_decay.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "bearer_id": {
+                    "description": "ID of the entity (or relationship) this signal inheres in. Required because a Signal cannot exist without a bearer (BFO: dependent continuant).",
+                    "type": "string"
+                },
+                "computed_at": {
+                    "description": "When this signal value was last computed.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "created_at": {
+                    "description": "When this was created.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "description": {
+                    "description": "Free-text description.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "id": {
+                    "description": "Globally unique identifier.",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Human-readable name.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "perspective": {
+                    "description": "ID of the entity from whose perspective this signal is computed. Null for global/objective signals (e.g., graph density). Set for subjective signals (e.g., trust computed from one agent's viewpoint).",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "signal_type": {
+                    "description": "Classification of the signal. Domain projects should constrain this to an enum. Examples: trust_score, health_score, centrality.",
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/$defs/EntityStatus",
+                    "description": "Lifecycle status."
+                },
+                "suggestion_type": {
+                    "$ref": "#/$defs/SuggestionType"
+                },
+                "tags": {
+                    "description": "Arbitrary classification tags.",
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": [
+                        "array",
+                        "null"
+                    ]
+                },
+                "title": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "description": "When this was last modified.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "value": {
+                    "description": "Current computed value. Interpretation is signal-type specific. Often 0.0\u20131.0 but not constrained at the root level (domain decides range and semantics).",
+                    "type": [
+                        "number",
+                        "null"
+                    ]
+                }
+            },
+            "required": [
+                "title",
+                "suggestion_type",
+                "signal_type",
+                "bearer_id",
+                "id"
+            ],
+            "title": "Suggestion",
+            "type": "object"
+        },
+        "SuggestionStatus": {
+            "description": "Current status of a suggestion.",
+            "enum": [
+                "pending",
+                "acted",
+                "dismissed"
+            ],
+            "title": "SuggestionStatus",
+            "type": "string"
+        },
+        "SuggestionType": {
+            "description": "Type of proactive suggestion.",
+            "enum": [
+                "explore",
+                "revisit",
+                "connect",
+                "reconsider"
+            ],
+            "title": "SuggestionType",
+            "type": "string"
+        },
+        "Supersedes": {
+            "additionalProperties": false,
+            "description": "A concept supersedes another \u2014 e.g. the user changed their mind and the older stance is deprecated. Drives the t_superseded_by bitemporal pointer for truth maintenance (ADR 002).",
+            "properties": {
+                "created_at": {
+                    "description": "When this was created.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "id": {
+                    "description": "Globally unique identifier.",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Human-readable name.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "reason": {
+                    "description": "Why the newer concept supersedes the older one.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "relation_type": {
+                    "description": "The type of relation (has_part, contains, depends_on, etc.). Domain projects should constrain this to an enum.",
+                    "type": "string"
+                },
+                "source_id": {
+                    "description": "ID of the source entity.",
+                    "type": "string"
+                },
+                "strength": {
+                    "description": "Weight or confidence of the relation (0.0 to 1.0).",
+                    "type": [
+                        "number",
+                        "null"
+                    ]
+                },
+                "target_id": {
+                    "description": "ID of the target entity.",
+                    "type": "string"
+                },
+                "updated_at": {
+                    "description": "When this was last modified.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                }
+            },
+            "required": [
+                "relation_type",
+                "source_id",
+                "target_id",
+                "id"
+            ],
+            "title": "Supersedes",
+            "type": "object"
+        },
+        "Temporal": {
+            "additionalProperties": false,
+            "description": "Timestamps for creation and last modification. Follows PROV-O temporal patterns.",
+            "properties": {
+                "created_at": {
+                    "description": "When this was created.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "updated_at": {
+                    "description": "When this was last modified.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                }
+            },
+            "title": "Temporal",
+            "type": "object"
+        },
+        "Wisdom": {
+            "additionalProperties": false,
+            "description": "A synthesized wisdom card generated by the Opus pass over the graph. Statusable because wisdoms flow pending \u2192 seen \u2192 dismissed.",
+            "properties": {
+                "algorithm": {
+                    "description": "Name or reference of the computation that produces this signal. Domain projects should document algorithms and constrain this to an enum. Examples: appleseed, pagerank, ewma, linear_decay.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "based_on_concepts": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ]
+                },
+                "based_on_sessions": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ]
+                },
+                "bearer_id": {
+                    "description": "ID of the entity (or relationship) this signal inheres in. Required because a Signal cannot exist without a bearer (BFO: dependent continuant).",
+                    "type": "string"
+                },
+                "computed_at": {
+                    "description": "When this signal value was last computed.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "created_at": {
+                    "description": "When this was created.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "description": {
+                    "description": "Free-text description.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "id": {
+                    "description": "Globally unique identifier.",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Human-readable name.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "perspective": {
+                    "description": "ID of the entity from whose perspective this signal is computed. Null for global/objective signals (e.g., graph density). Set for subjective signals (e.g., trust computed from one agent's viewpoint).",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "related_concept_ids": {
+                    "description": "JSON array of concept ids this wisdom cites.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "signal_type": {
+                    "description": "Classification of the signal. Domain projects should constrain this to an enum. Examples: trust_score, health_score, centrality.",
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/$defs/EntityStatus",
+                    "description": "Lifecycle status."
+                },
+                "tags": {
+                    "description": "Arbitrary classification tags.",
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": [
+                        "array",
+                        "null"
+                    ]
+                },
+                "title": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "description": "When this was last modified.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "value": {
+                    "description": "Current computed value. Interpretation is signal-type specific. Often 0.0\u20131.0 but not constrained at the root level (domain decides range and semantics).",
+                    "type": [
+                        "number",
+                        "null"
+                    ]
+                },
+                "wisdom_type": {
+                    "$ref": "#/$defs/WisdomType"
+                }
+            },
+            "required": [
+                "title",
+                "wisdom_type",
+                "signal_type",
+                "bearer_id",
+                "id"
+            ],
+            "title": "Wisdom",
+            "type": "object"
+        },
+        "WisdomEnriches": {
+            "additionalProperties": false,
+            "description": "Wisdom \u2192 KnowledgeNode variant of Enriches. Separate subclass because Kuzu's REL DDL requires FROM/TO types declared per REL table. Future consumer subclasses (HypothesisEnriches etc.) follow the same pattern (ADR 011 v2 multi-pair decision).",
+            "properties": {
+                "created_at": {
+                    "description": "When this was created.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "gate_verdicts": {
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "id": {
+                    "description": "Globally unique identifier.",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Human-readable name.",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "relation_type": {
+                    "description": "The type of relation (has_part, contains, depends_on, etc.). Domain projects should constrain this to an enum.",
+                    "type": "string"
+                },
+                "relevance": {
+                    "type": [
+                        "number",
+                        "null"
+                    ]
+                },
+                "source_id": {
+                    "description": "ID of the source entity.",
+                    "type": "string"
+                },
+                "strength": {
+                    "description": "Weight or confidence of the relation (0.0 to 1.0).",
+                    "type": [
+                        "number",
+                        "null"
+                    ]
+                },
+                "target_id": {
+                    "description": "ID of the target entity.",
+                    "type": "string"
+                },
+                "trigger": {
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "updated_at": {
+                    "description": "When this was last modified.",
+                    "format": "date-time",
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                }
+            },
+            "required": [
+                "relation_type",
+                "source_id",
+                "target_id",
+                "id"
+            ],
+            "title": "WisdomEnriches",
+            "type": "object"
+        },
+        "WisdomType": {
+            "description": "Type of synthesized wisdom card.",
+            "enum": [
+                "wisdom",
+                "nothing_novel"
+            ],
+            "title": "WisdomType",
+            "type": "string"
+        }
+    },
+    "$id": "https://extended-thinking.dev/schema",
+    "$schema": "https://json-schema.org/draft/2019-09/schema",
+    "additionalProperties": true,
+    "metamodel_version": "1.7.0",
+    "title": "extended_thinking",
+    "type": "object",
+    "version": null
+}
+

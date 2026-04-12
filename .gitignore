@@ -14,8 +14,10 @@ node_modules/
 .next/
 out/
 
-# Generated schema artifacts
-schema/generated/
+# Generated schema artifacts are COMMITTED until malleus-dev hits PyPI
+# and CI can regenerate them from the installed ontology. See
+# CHANGELOG.md and scripts/gen_kuzu.py.
+schema/generated/__pycache__/
 
 # Silk data
 data/
