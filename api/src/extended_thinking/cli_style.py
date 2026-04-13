@@ -40,7 +40,7 @@ _ACCENT = "\033[38;5;80m"   # muted cyan — ET's signature, header only
 _WARN = "\033[38;5;179m"    # soft amber for non-fatal notices
 _ERR = "\033[38;5;167m"     # muted rose for hard errors
 _OK = "\033[38;5;107m"      # muted moss for ✓ / success markers
-_RED = "\033[38;5;196m"     # ET's fingertip glow — phone-home mode only
+_RED = "\033[38;5;202m"     # ET's fingertip — orange-red glow, not fire-alarm red
 
 
 def _tty() -> bool:
