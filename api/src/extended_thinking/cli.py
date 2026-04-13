@@ -583,6 +583,129 @@ def _interactive_source_picker(rows) -> list[bool] | None:
     return selected
 
 
+# ── Cwd-aware project discovery ──────────────────────────────────────
+
+def _discover_cwd_git_projects() -> list[Path]:
+    """Find git projects related to the user's current directory.
+
+    - If cwd itself is a git repo, returns [cwd] (they're already in
+      the project).
+    - Otherwise, returns immediate subdirs of cwd that contain a .git
+      directory — the "I'm in my projects folder" case.
+    - Excludes common noise dirs (node_modules, .venv, etc.).
+    """
+    try:
+        cwd = Path.cwd().resolve()
+    except OSError:
+        return []
+
+    if (cwd / ".git").is_dir():
+        return [cwd]
+
+    from extended_thinking.providers.projects import _SKIP_DIRS
+    projects: list[Path] = []
+    try:
+        for entry in cwd.iterdir():
+            if (
+                entry.is_dir()
+                and entry.name not in _SKIP_DIRS
+                and not entry.is_symlink()
+                and (entry / ".git").is_dir()
+            ):
+                projects.append(entry.resolve())
+    except OSError:
+        return []
+    return sorted(projects, key=lambda p: p.name.lower())
+
+
+def _maybe_prompt_cwd_projects() -> bool:
+    """If cwd has git projects not already in config, prompt the user
+    to add them. Returns True when config was changed (caller reloads
+    settings + pipeline)."""
+    if not sys.stdout.isatty() or not sys.stdin.isatty():
+        return False
+
+    from extended_thinking.config import settings
+
+    discovered = _discover_cwd_git_projects()
+    if not discovered:
+        return False
+
+    existing = {
+        Path(p).expanduser().resolve()
+        for p in settings.providers.projects.roots
+    }
+    candidates = [p for p in discovered if p not in existing]
+    if not candidates:
+        return False
+
+    cwd_str = str(Path.cwd()).replace(str(Path.home()), "~")
+    n = len(candidates)
+    print(
+        f"  {style.accent('◉‿◉ ╭╮')}  "
+        f"found {n} git project{'s' if n != 1 else ''} under "
+        f"{style.dim(cwd_str)}"
+    )
+    print(f"  {style.dim('pick which to add to ET reading list:')}")
+    print()
+
+    rows = [
+        (p.name, str(p).replace(str(Path.home()), "~"), "")
+        for p in candidates
+    ]
+    selected = _interactive_source_picker(rows)
+    if selected is None or not any(selected):
+        print()
+        print(style.hint("  no projects added."))
+        print()
+        return False
+
+    chosen = [p for p, keep in zip(candidates, selected) if keep]
+    _persist_project_roots(chosen)
+
+    print()
+    print(style.signature(
+        "up", "lit", glowing=True,
+        note=f"learning {len(chosen)} project{'s' if len(chosen) != 1 else ''}.",
+    ))
+    print()
+    return True
+
+
+def _persist_project_roots(chosen: list[Path]) -> None:
+    """Append chosen project roots to providers.projects.roots in the
+    user config. Enables the provider if it wasn't already."""
+    from extended_thinking.config import settings
+    from extended_thinking.config.commands import cmd_config_set
+
+    # Compose the new roots list (preserving existing config order).
+    current = [str(Path(p)) for p in settings.providers.projects.roots]
+    additions = [str(p) for p in chosen if str(p) not in current]
+    new_list = current + additions
+
+    # cmd_config_set writes TOML and prints a `wrote ...` line; we want
+    # this quiet during sync, so redirect its stdout briefly.
+    import contextlib
+    import io
+    with contextlib.redirect_stdout(io.StringIO()):
+        cmd_config_set("providers.projects.enabled", "true", scope="user")
+        # The config's coercion splits comma-separated values into a list,
+        # so a single path stays a path, multiple paths become a list.
+        cmd_config_set(
+            "providers.projects.roots", ",".join(new_list), scope="user",
+        )
+
+
+def _reload_settings() -> None:
+    """Reload the module-level settings singleton in place so existing
+    imports keep seeing the updated fields."""
+    from extended_thinking.config import load_settings, settings
+    from extended_thinking.config.schema import Settings
+    fresh = load_settings()
+    for field_name in Settings.model_fields:
+        setattr(settings, field_name, getattr(fresh, field_name))
+
+
 def _describe_provider_path(p) -> str:
     """Best-effort one-line description of where a provider reads from.
 
@@ -620,6 +743,15 @@ def cmd_sync(yes: bool = False) -> int:
 
     print(style.header("sync", right=provider_name))
     print()
+
+    # Cwd-aware: if ET isn't already tracking the current directory and
+    # there are git projects under it, offer to add them. Rebuilds the
+    # pipeline so the new projects show up in the source picker below.
+    if not yes:
+        if _maybe_prompt_cwd_projects():
+            pipeline.store.close()
+            _reload_settings()
+            pipeline = _get_pipeline()
 
     # Pre-flight: show what we're about to ingest from, confirm.
     if not _confirm_sources(pipeline, assume_yes=yes):
