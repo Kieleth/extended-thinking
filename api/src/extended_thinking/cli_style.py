@@ -120,12 +120,12 @@ HANDS = {
 # Columns: brow/face at 0-2, gap at 3-5, finger at col 6.
 
 BROWS = {
-    "neutral": "‾ ‾",    # flat
-    "raised":  "⌒ ⌒",    # curious
-    "arch":    "╭ ╮",    # surprised
-    "furrow":  "＾ ＾",   # focused
-    "tilt":    "ˇ ˇ",    # thinking
-    "flat":    "﹏ ﹏",   # annoyed
+    "neutral": "‾ ‾",    # flat overline — relaxed
+    "raised":  "⌒ ⌒",    # curious arcs
+    "arch":    "╭ ╮",    # surprised curls
+    "furrow":  "^ ^",    # focused carets (ASCII — stays 1-cell wide)
+    "tilt":    "ˇ ˇ",    # thinking hačeks
+    "flat":    "~ ~",    # annoyed tildes (ASCII — stays 1-cell wide)
 }
 
 STEM = "│"
