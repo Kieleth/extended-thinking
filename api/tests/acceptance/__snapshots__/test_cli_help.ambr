@@ -1,0 +1,230 @@
+# serializer version: 1
+# name: test_config_help_renders
+  '''
+  usage: et config [-h] <config_cmd> ...
+  
+  Manage the layered TOML config: defaults → user → drop-ins → project → secrets → env → explicit.
+  
+  positional arguments:
+    <config_cmd>
+      init        scaffold config.toml and secrets.toml under
+                  ~/.config/extended-thinking
+      path        print resolved config file paths
+      show        print resolved effective config
+      validate    load + validate config, exit nonzero on error
+      get         read a single config value (dotted path)
+      set         write a single config value
+      edit        open config in $EDITOR
+  
+  options:
+    -h, --help    show this help message and exit
+  
+  examples:
+    et config init                            scaffold config + secrets files
+    et config show                            print resolved effective config
+    et config show --format json              JSON output for scripting
+    et config get extraction.model            read one value
+    et config set extraction.model haiku-4-5  write one value
+    et config edit --scope secrets            open secrets.toml in $EDITOR
+  
+  '''
+# ---
+# name: test_subcommand_help_renders[concepts][concepts]
+  '''
+  usage: et concepts [-h] [--limit LIMIT]
+  
+  Print the most-frequent concepts the extraction has surfaced.
+  
+  options:
+    -h, --help     show this help message and exit
+    --limit LIMIT  how many concepts to show (default: 20)
+  
+  examples:
+    et concepts               default top 20
+    et concepts --limit 50    show 50
+  
+  '''
+# ---
+# name: test_subcommand_help_renders[doctor][doctor]
+  '''
+  usage: et doctor [-h] [--quiet]
+  
+  Run a top-to-bottom health check. Every check shows ✓ or ✗ with a hint on how to fix anything red.
+  
+  options:
+    -h, --help  show this help message and exit
+    --quiet     print only the summary line
+  
+  examples:
+    et doctor                 verbose checklist
+    et doctor --quiet         summary only (exit code says it all)
+  
+  '''
+# ---
+# name: test_subcommand_help_renders[init][init]
+  '''
+  usage: et init [-h] [--dry-run]
+  
+  Idempotently patch each detected client's MCP config to include extended-thinking. Backs up the existing config before writing.
+  
+  options:
+    -h, --help  show this help message and exit
+    --dry-run   show what would change, write nothing
+  
+  examples:
+    et init                   detect clients, register everywhere
+    et init --dry-run         preview the patches
+  
+  '''
+# ---
+# name: test_subcommand_help_renders[insight][insight]
+  '''
+  usage: et insight [-h] [--force]
+  
+  Run a sync, then ask Opus to synthesize wisdom from the result.
+  
+  options:
+    -h, --help  show this help message and exit
+    --force     force re-synthesis even if no new concepts
+  
+  examples:
+    et insight                generate wisdom from current state
+    et insight --force        force a fresh synthesis even if nothing new
+  
+  '''
+# ---
+# name: test_subcommand_help_renders[reset][reset]
+  '''
+  usage: et reset [-h] [--go-home]
+  
+  Remove every trace of ET on this machine: data, config, legacy data dirs. Dry-run by default.
+  
+  options:
+    -h, --help  show this help message and exit
+    --go-home   actually delete; without this flag, reset previews only
+  
+  examples:
+    et reset                  preview what would be deleted
+    et reset --go-home        actually delete (irreversible)
+  
+  '''
+# ---
+# name: test_subcommand_help_renders[stats][stats]
+  '''
+  usage: et stats [-h]
+  
+  Snapshot of the current graph: how many of each thing.
+  
+  options:
+    -h, --help  show this help message and exit
+  
+  '''
+# ---
+# name: test_subcommand_help_renders[sync][sync]
+  '''
+  usage: et sync [-h] [-y]
+  
+  Read recent memories from every detected provider, filter, extract concepts via Haiku, write them into the knowledge graph.
+  
+  options:
+    -h, --help  show this help message and exit
+    -y, --yes   skip the source-confirmation prompt
+  
+  examples:
+    et sync                   interactive (asks before pulling)
+    et sync -y                non-interactive (use in scripts / cron)
+  
+  '''
+# ---
+# name: test_subcommand_help_renders[wizard][wizard]
+  '''
+  usage: et wizard [-h] [--dry-run]
+  
+  Walk you through provider selection, API key check, MCP registration, and an optional first sync.
+  
+  options:
+    -h, --help  show this help message and exit
+    --dry-run   walk through prompts but make no changes
+  
+  examples:
+    et wizard                 full interactive setup
+    et wizard --dry-run       show what it would do, change nothing
+  
+  '''
+# ---
+# name: test_top_level_help_includes_workflow_examples
+  '''
+  usage: et [-h] <command> ...
+  
+  extended-thinking — a synthesis layer over your memory systems.
+  ingests Claude Code sessions, folders, MemPalace, and friends; extracts concepts; builds a bitemporal knowledge graph; surfaces wisdom.
+  
+  positional arguments:
+    <command>
+      insight    sync + synthesize wisdom from the graph
+      concepts   list extracted concepts
+      sync       pull memories from your providers and extract concepts
+      stats      show counts: memories, concepts, relationships, wisdom
+      doctor     diagnose ET — checks API keys, providers, MCP registration
+      wizard     interactive first-run setup (run this if et looks confusing)
+      mcp-serve  run the MCP server (invoked by clients, not humans)
+      init       register ET as an MCP server with Claude Code, Claude Desktop,
+                 opencode
+      reset      wipe ET state (dry-run unless --go-home)
+      config     inspect or edit ET configuration (TOML, ADR 012)
+  
+  options:
+    -h, --help   show this help message and exit
+  
+  common workflows:
+    first run                  et wizard          # interactive setup
+    daily loop                 et sync && et insight
+    health check               et doctor          # is everything wired up?
+    browse what's been seen    et concepts --limit 50
+    inspect configuration      et config show
+  
+  learn more:
+    et <command> --help        details + examples for one command
+    et doctor                  diagnose problems
+    https://github.com/Kieleth/extended-thinking
+  
+  '''
+# ---
+# name: test_top_level_help_lists_every_command
+  '''
+  usage: et [-h] <command> ...
+  
+  extended-thinking — a synthesis layer over your memory systems.
+  ingests Claude Code sessions, folders, MemPalace, and friends; extracts concepts; builds a bitemporal knowledge graph; surfaces wisdom.
+  
+  positional arguments:
+    <command>
+      insight    sync + synthesize wisdom from the graph
+      concepts   list extracted concepts
+      sync       pull memories from your providers and extract concepts
+      stats      show counts: memories, concepts, relationships, wisdom
+      doctor     diagnose ET — checks API keys, providers, MCP registration
+      wizard     interactive first-run setup (run this if et looks confusing)
+      mcp-serve  run the MCP server (invoked by clients, not humans)
+      init       register ET as an MCP server with Claude Code, Claude Desktop,
+                 opencode
+      reset      wipe ET state (dry-run unless --go-home)
+      config     inspect or edit ET configuration (TOML, ADR 012)
+  
+  options:
+    -h, --help   show this help message and exit
+  
+  common workflows:
+    first run                  et wizard          # interactive setup
+    daily loop                 et sync && et insight
+    health check               et doctor          # is everything wired up?
+    browse what's been seen    et concepts --limit 50
+    inspect configuration      et config show
+  
+  learn more:
+    et <command> --help        details + examples for one command
+    et doctor                  diagnose problems
+    https://github.com/Kieleth/extended-thinking
+  
+  '''
+# ---

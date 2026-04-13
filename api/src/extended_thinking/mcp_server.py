@@ -49,108 +49,71 @@ def _get_unified_graph(pipeline):
 
 MARKERS = {"topic": "◦", "theme": "◈", "decision": "◇", "tension": "⚡", "question": "?", "entity": "●"}
 
-WHY_LABELS = ["WHY", "BECAUSE", "THE PATTERN", "UNDERNEATH", "WHAT'S HIDDEN"]
-DO_LABELS = ["DO", "TRY THIS", "THE MOVE", "NEXT STEP", "WHAT TO BUILD"]
-PROMPTS = [
-    'Say "tell me more" to explore any concept, or "why" for the full reasoning.',
-    'Pick a node to zoom in. Or say "deeper" for the full analysis.',
-    'Any of these ring true? Point at one and I\'ll unpack it.',
-    '"Expand" any concept, or "challenge" this if it feels off.',
-]
-
-_call_count = 0
-
 
 def _render_insight(wisdom: dict, concepts: list[dict]) -> str:
-    """Render a dynamic mind map with the insight crystallizing from evidence.
+    """Render an insight as a noticing card.
 
-    The topology is generated from the actual concept relationships,
-    not a static template. Each call varies labels and prompts.
+    Plain text. The headline is the noticing in one sentence; the
+    paragraph below is the why; the source concepts go in a dim footer.
+    Optional small action only when the model genuinely had one to add.
+    No mind map, no ASCII boxes — the noticing IS the artifact.
+
+    Output shape:
+
+      <title sentence>
+
+      <why paragraph, wrapped to ~72 chars>
+
+      seen in: concept-a, concept-b, concept-c
+
+      maybe: <action sentence>     (only if action present)
     """
-    global _call_count
-    _call_count += 1
+    from extended_thinking import cli_style as style
 
-    title = wisdom.get("title", "Untitled")
-    description = wisdom.get("description", "")
+    title = wisdom.get("title", "").strip()
+    description = wisdom.get("description", "").strip()
+    wisdom_type = wisdom.get("wisdom_type", wisdom.get("type", "noticing"))
+
+    # Description carries `**Why:** … **Action:** …` for legacy rows;
+    # newer noticings store just the why.
+    why_text = description
+    action_text = ""
+    if "**Why:**" in description:
+        body = description.split("**Why:**", 1)[1]
+        if "**Action:**" in body:
+            why_part, action_part = body.split("**Action:**", 1)
+            why_text = why_part.strip()
+            action_text = action_part.strip()
+        else:
+            why_text = body.strip()
+
+    # Action is only worth showing if the model gave us a real one.
+    if action_text.lower() in ("none", "", "n/a", "tbd"):
+        action_text = ""
+
+    # Resolve evidence concepts. Honor the wisdom's own related_concept_ids;
+    # fall back to top concepts if none were attached.
     related_ids = set(wisdom.get("related_concept_ids", []))
     related = [c for c in concepts if c["id"] in related_ids]
     if not related:
-        related = concepts[:5]
+        related = concepts[:3]
 
-    # Extract why/action from description
-    why_text = ""
-    action_text = ""
-    if "**Why:**" in description and "**Action:**" in description:
-        parts = description.split("**Action:**")
-        why_text = parts[0].replace("**Why:**", "").strip()
-        action_text = parts[1].strip() if len(parts) > 1 else ""
-    else:
-        why_text = description
-
-    # Compress to 1-2 sentences
-    why_short = ". ".join(why_text.split(". ")[:2]).strip()
-    if why_short and not why_short.endswith("."):
-        why_short += "."
-    action_short = ". ".join(action_text.split(". ")[:2]).strip()
-    if action_short and not action_short.endswith("."):
-        action_short += "."
-
-    # Pick varied labels
-    why_label = WHY_LABELS[_call_count % len(WHY_LABELS)]
-    do_label = DO_LABELS[_call_count % len(DO_LABELS)]
-    prompt = PROMPTS[_call_count % len(PROMPTS)]
-
-    # Build the mind map dynamically based on concept count
-    lines = []
-    n = len(related)
-
-    if n >= 5:
-        # Star topology: concepts radiate, insight at center bottom
-        c = [f"{MARKERS.get(r['category'], '.')} {r['name']}" for r in related]
-        lines.append(f"       {c[0]}")
-        lines.append(f"      /")
-        lines.append(f"  {c[1]} ---*--- {c[2]}")
-        lines.append(f"      \\      /")
-        lines.append(f"       \\    /")
-        lines.append(f"    {c[3]} -'")
-        if n > 4:
-            lines.append(f"          \\")
-            lines.append(f"     {c[4]}")
-            lines.append(f"            \\")
-        else:
-            lines.append(f"              \\")
-    elif n >= 3:
-        # Triangle
-        c = [f"{MARKERS.get(r['category'], '.')} {r['name']}" for r in related]
-        lines.append(f"  {c[0]} ---*--- {c[1]}")
-        lines.append(f"         \\   /")
-        lines.append(f"      {c[2]}")
-        lines.append(f"            \\")
-    elif n >= 1:
-        # Simple chain
-        for r in related:
-            m = MARKERS.get(r["category"], ".")
-            lines.append(f"  {m} {r['name']}")
-            lines.append(f"       |")
-    else:
-        lines.append("  (no evidence concepts)")
-
-    # Insight box — simple ASCII, no Unicode box drawing
-    title_lines = _word_wrap(title, 48)
-    max_w = max(len(tl) for tl in title_lines) + 4
-    lines.append(f"       *{'-' * max_w}*")
-    for tl in title_lines:
-        lines.append(f"       | {tl:<{max_w - 2}} |")
-    lines.append(f"       *{'-' * max_w}*")
-
-    lines.append("")
-
-    # Why + Do
-    for wl in _word_wrap(f"  {why_label}  {why_short}", 60):
-        lines.append(wl)
-    lines.append("")
-    for al in _word_wrap(f"  {do_label}  {action_short}", 60):
-        lines.append(al)
+    lines: list[str] = []
+    if title:
+        for tl in _word_wrap(title, 72):
+            lines.append(f"  {tl}")
+        lines.append("")
+    if why_text:
+        for wl in _word_wrap(why_text, 72):
+            lines.append(f"  {wl}")
+        lines.append("")
+    if related:
+        names = ", ".join(r.get("name", r["id"]) for r in related[:5])
+        lines.append(f"  {style.dim('seen in: ' + names)}")
+    if action_text:
+        lines.append("")
+        for al in _word_wrap(f"maybe: {action_text}", 72):
+            lines.append(f"  {style.dim(al)}")
 
     return "\n".join(lines)
 
@@ -717,15 +680,13 @@ async def handle_tool_call(name: str, arguments: dict) -> str:
         # Get concepts for evidence trail
         concepts = pipeline.store.list_concepts(order_by="frequency", limit=50)
 
-        if insight["type"] in ("wisdom", "reflection"):
+        if insight["type"] in ("noticing", "wisdom", "reflection"):
             wisdoms = pipeline.store.list_wisdoms(limit=1)
             if wisdoms:
-                mind_map = _render_insight(wisdoms[0], concepts)
-                prompt = PROMPTS[_call_count % len(PROMPTS)]
+                rendered = _render_insight(wisdoms[0], concepts)
                 return json.dumps({
-                    "_render": "wisdom_card",
-                    "mind_map": mind_map,
-                    "prompt": prompt,
+                    "_render": "noticing",
+                    "card": rendered,
                 }, indent=2)
 
         ins = insight.get("insight", {})

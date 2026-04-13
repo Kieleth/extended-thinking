@@ -127,16 +127,15 @@ def cmd_insight(force: bool = False) -> int:
     print()
     if wisdoms:
         print(_render_insight(wisdoms[0], concepts))
-        # Looked up, saw something, fingertip burned bright.
+        # The noticing IS the moment — quiet sign-off.
         print()
-        print(style.signature("up", "burn", glowing=True,
-                              note="saw something. kept it."))
+        print(style.signature("up", "lit", glowing=True, note="noticing."))
     else:
-        title = insight.get("insight", {}).get("title", "no insight available")
+        title = insight.get("insight", {}).get("title", "nothing to surface yet")
         print(f"  {title}")
         print()
         print(style.signature("narrow", "rest",
-                              note="nothing new surfaced."))
+                              note="not enough yet. keep thinking, keep syncing."))
     return 0
 
 
@@ -858,28 +857,183 @@ def cmd_init(dry_run: bool = False) -> int:
 
 # ── entry point ──────────────────────────────────────────────────────────────
 
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="et", description="Extended-thinking CLI.")
-    sub = parser.add_subparsers(dest="cmd", required=False)
+_TOP_EPILOG = """\
+common workflows:
+  first run                  et wizard          # interactive setup
+  daily loop                 et sync && et insight
+  health check               et doctor          # is everything wired up?
+  browse what's been seen    et concepts --limit 50
+  inspect configuration      et config show
 
-    sub.add_parser("insight", help="sync + generate wisdom").add_argument("--force", action="store_true")
-    sub.add_parser("concepts", help="list concepts").add_argument("--limit", type=int, default=20)
-    p_sync = sub.add_parser("sync", help="pull from provider")
+learn more:
+  et <command> --help        details + examples for one command
+  et doctor                  diagnose problems
+  https://github.com/Kieleth/extended-thinking
+"""
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="et",
+        description=(
+            "extended-thinking — a synthesis layer over your memory systems.\n"
+            "ingests Claude Code sessions, folders, MemPalace, and friends; "
+            "extracts concepts; builds a bitemporal knowledge graph; surfaces wisdom."
+        ),
+        epilog=_TOP_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    sub = parser.add_subparsers(dest="cmd", required=False, metavar="<command>")
+
+    p_insight = sub.add_parser(
+        "insight",
+        help="sync + synthesize wisdom from the graph",
+        description="Run a sync, then ask Opus to synthesize wisdom from the result.",
+        epilog=(
+            "examples:\n"
+            "  et insight                generate wisdom from current state\n"
+            "  et insight --force        force a fresh synthesis even if nothing new"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_insight.add_argument("--force", action="store_true",
+                           help="force re-synthesis even if no new concepts")
+
+    p_concepts = sub.add_parser(
+        "concepts",
+        help="list extracted concepts",
+        description="Print the most-frequent concepts the extraction has surfaced.",
+        epilog=(
+            "examples:\n"
+            "  et concepts               default top 20\n"
+            "  et concepts --limit 50    show 50"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_concepts.add_argument("--limit", type=int, default=20,
+                            help="how many concepts to show (default: 20)")
+
+    p_sync = sub.add_parser(
+        "sync",
+        help="pull memories from your providers and extract concepts",
+        description=(
+            "Read recent memories from every detected provider, filter, "
+            "extract concepts via Haiku, write them into the knowledge graph."
+        ),
+        epilog=(
+            "examples:\n"
+            "  et sync                   interactive (asks before pulling)\n"
+            "  et sync -y                non-interactive (use in scripts / cron)"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     p_sync.add_argument("-y", "--yes", action="store_true",
                         help="skip the source-confirmation prompt")
-    sub.add_parser("stats", help="show stats")
-    sub.add_parser("mcp-serve", help="run the MCP server (for clients)")
 
-    p_init = sub.add_parser("init", help="register ET as an MCP server with CC / Claude Desktop")
-    p_init.add_argument("--dry-run", action="store_true", help="show what would change, write nothing")
+    sub.add_parser(
+        "stats",
+        help="show counts: memories, concepts, relationships, wisdom",
+        description="Snapshot of the current graph: how many of each thing.",
+    )
 
-    p_reset = sub.add_parser("reset", help="wipe all ET state (dry-run unless --go-home)")
+    p_doctor = sub.add_parser(
+        "doctor",
+        help="diagnose ET — checks API keys, providers, MCP registration",
+        description=(
+            "Run a top-to-bottom health check. Every check shows ✓ or ✗ "
+            "with a hint on how to fix anything red."
+        ),
+        epilog=(
+            "examples:\n"
+            "  et doctor                 verbose checklist\n"
+            "  et doctor --quiet         summary only (exit code says it all)"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_doctor.add_argument("--quiet", action="store_true",
+                          help="print only the summary line")
+
+    p_wizard = sub.add_parser(
+        "wizard",
+        help="interactive first-run setup (run this if et looks confusing)",
+        description=(
+            "Walk you through provider selection, API key check, MCP "
+            "registration, and an optional first sync."
+        ),
+        epilog=(
+            "examples:\n"
+            "  et wizard                 full interactive setup\n"
+            "  et wizard --dry-run       show what it would do, change nothing"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_wizard.add_argument("--dry-run", action="store_true",
+                          help="walk through prompts but make no changes")
+
+    sub.add_parser(
+        "mcp-serve",
+        help="run the MCP server (invoked by clients, not humans)",
+        description=(
+            "Start the MCP stdio server so a client (Claude Code, Claude "
+            "Desktop, opencode) can call ET tools. You normally never run "
+            "this yourself — `et init` registers it for you."
+        ),
+    )
+
+    p_init = sub.add_parser(
+        "init",
+        help="register ET as an MCP server with Claude Code, Claude Desktop, opencode",
+        description=(
+            "Idempotently patch each detected client's MCP config to include "
+            "extended-thinking. Backs up the existing config before writing."
+        ),
+        epilog=(
+            "examples:\n"
+            "  et init                   detect clients, register everywhere\n"
+            "  et init --dry-run         preview the patches"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_init.add_argument("--dry-run", action="store_true",
+                        help="show what would change, write nothing")
+
+    p_reset = sub.add_parser(
+        "reset",
+        help="wipe ET state (dry-run unless --go-home)",
+        description=(
+            "Remove every trace of ET on this machine: data, config, legacy "
+            "data dirs. Dry-run by default."
+        ),
+        epilog=(
+            "examples:\n"
+            "  et reset                  preview what would be deleted\n"
+            "  et reset --go-home        actually delete (irreversible)"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     p_reset.add_argument("--go-home", action="store_true",
                          help="actually delete; without this flag, reset previews only")
 
     # `et config ...` — ADR 012
-    p_cfg = sub.add_parser("config", help="inspect or edit ET configuration")
-    cfg_sub = p_cfg.add_subparsers(dest="config_cmd", required=True)
+    p_cfg = sub.add_parser(
+        "config",
+        help="inspect or edit ET configuration (TOML, ADR 012)",
+        description=(
+            "Manage the layered TOML config: defaults → user → drop-ins → "
+            "project → secrets → env → explicit."
+        ),
+        epilog=(
+            "examples:\n"
+            "  et config init                            scaffold config + secrets files\n"
+            "  et config show                            print resolved effective config\n"
+            "  et config show --format json              JSON output for scripting\n"
+            "  et config get extraction.model            read one value\n"
+            "  et config set extraction.model haiku-4-5  write one value\n"
+            "  et config edit --scope secrets            open secrets.toml in $EDITOR"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    cfg_sub = p_cfg.add_subparsers(dest="config_cmd", required=True, metavar="<config_cmd>")
     p_cfg_init = cfg_sub.add_parser("init", help="scaffold config.toml and secrets.toml under ~/.config/extended-thinking")
     p_cfg_init.add_argument("--force", action="store_true", help="overwrite existing files")
     cfg_sub.add_parser("path", help="print resolved config file paths")
@@ -917,6 +1071,12 @@ def _dispatch(args) -> int:
         return cmd_reset(go_home=args.go_home)
     if args.cmd == "mcp-serve":
         return cmd_mcp_serve()
+    if args.cmd == "doctor":
+        from extended_thinking.cli_doctor import cmd_doctor
+        return cmd_doctor(quiet=args.quiet)
+    if args.cmd == "wizard":
+        from extended_thinking.cli_wizard import cmd_wizard
+        return cmd_wizard(dry_run=args.dry_run)
     if args.cmd == "config":
         from extended_thinking.config.commands import (
             cmd_config_edit,
@@ -944,23 +1104,123 @@ def _dispatch(args) -> int:
     return 1
 
 
+_KNOWN_COMMANDS = (
+    "insight", "concepts", "sync", "stats", "doctor", "wizard",
+    "mcp-serve", "init", "reset", "config",
+)
+
+
+def _suggest_command(unknown: str) -> str | None:
+    """Return the closest match to a typo'd subcommand, or None."""
+    import difflib
+    matches = difflib.get_close_matches(unknown, _KNOWN_COMMANDS, n=1, cutoff=0.5)
+    return matches[0] if matches else None
+
+
+def _render_no_args() -> int:
+    """`et` with no args. If the install is clearly fresh (no config, no
+    data dir), point at the wizard. Otherwise, show a brief status."""
+    from extended_thinking.config import settings
+    from extended_thinking.config.paths import user_config_dir
+
+    has_config = (user_config_dir() / "config.toml").exists()
+    has_data = settings.data.root.exists() and any(settings.data.root.iterdir())
+
+    print(style.header("et"))
+    print(style.subtitle("  a synthesis layer over your memory systems"))
+    print()
+
+    if not has_config and not has_data:
+        # First-run: clearly point at the wizard.
+        print(style.notice(
+            "looks like a fresh install. let's get you started.",
+            "",
+            f"  {style.dim('$')} et wizard          # interactive setup (recommended)",
+            f"  {style.dim('$')} et init            # just register MCP, configure manually",
+            f"  {style.dim('$')} et --help          # full command list",
+            tone="ok",
+        ))
+        print()
+        print(style.signature("open", "spark", glowing=True, note="ready to set up."))
+        return 0
+
+    # Already set up — show the path forward.
+    print(style.notice(
+        "ET is set up on this machine.",
+        "",
+        f"  {style.dim('$')} et sync             # pull recent memories",
+        f"  {style.dim('$')} et insight          # synthesize wisdom",
+        f"  {style.dim('$')} et stats            # what's in the graph",
+        f"  {style.dim('$')} et doctor           # health check",
+        f"  {style.dim('$')} et --help           # full command list",
+        tone="ok",
+    ))
+    print()
+    print(style.signature("open", "lit", glowing=True, note="up and humming."))
+    return 0
+
+
+def _render_friendly_error(exc: BaseException) -> int | None:
+    """If `exc` is a known UX-concern error, print a styled notice + return
+    the exit code. Otherwise return None to let the caller re-raise."""
+    from extended_thinking.config.migrate import DataDirConflict
+
+    if isinstance(exc, DataDirConflict):
+        print(_render_data_dir_conflict(exc), file=sys.stderr)
+        return 2
+
+    if isinstance(exc, RuntimeError) and "No AI providers configured" in str(exc):
+        print(style.notice(
+            "ET needs an AI provider key, but none was found.",
+            "",
+            "  set one of these:",
+            f"    {style.dim('$')} export ANTHROPIC_API_KEY=sk-ant-...",
+            f"    {style.dim('$')} et config set credentials.anthropic_api_key=sk-ant-... --scope secrets",
+            "",
+            "  then re-run, or `et doctor` to verify.",
+            tone="warn",
+        ), file=sys.stderr)
+        return 2
+
+    if isinstance(exc, KeyboardInterrupt):
+        print()
+        print(style.signature("blink", "rest", note="cancelled."), file=sys.stderr)
+        return 130
+
+    if isinstance(exc, BrokenPipeError):
+        # Common when piping `et concepts | head` and head closes early.
+        return 0
+
+    return None
+
+
 def main() -> int:
     parser = _build_parser()
+
+    # Pre-check: if the user typed a near-miss subcommand, suggest the
+    # closest match before argparse's own "invalid choice" error.
+    if len(sys.argv) >= 2 and sys.argv[1] not in ("-h", "--help") and not sys.argv[1].startswith("-"):
+        if sys.argv[1] not in _KNOWN_COMMANDS:
+            suggested = _suggest_command(sys.argv[1])
+            if suggested:
+                print(style.notice(
+                    f"unknown command: {sys.argv[1]!r}",
+                    f"  did you mean {style.accent('et ' + suggested)}?",
+                    tone="warn",
+                ), file=sys.stderr)
+                return 2
+
     args = parser.parse_args()
 
     if args.cmd is None:
-        parser.print_help()
-        return 1
+        return _render_no_args()
 
-    # Single place to catch expected, renderable error states. Anything
-    # else bubbles up as a Python traceback (bug, not a UX concern).
     try:
         return _dispatch(args)
-    except Exception as exc:
-        from extended_thinking.config.migrate import DataDirConflict
-        if isinstance(exc, DataDirConflict):
-            print(_render_data_dir_conflict(exc), file=sys.stderr)
-            return 2
+    except BaseException as exc:
+        rc = _render_friendly_error(exc)
+        if rc is not None:
+            return rc
         raise
 
 

@@ -84,11 +84,11 @@ def _make_dummy_llm() -> DummyLM:
 
     Keys picked from substrings that only appear in their respective
     prompts — 'CONVERSATION:' is the extractor's user-turn marker;
-    'cognitive advisor' opens the wisdom prompt (see
-    pipeline_v2._build_wisdom_prompt).
+    'point at one through-line' is in the noticing-mode wisdom prompt
+    (see pipeline_v2._build_wisdom_prompt).
     """
     return DummyLM({
-        "cognitive advisor": WISDOM_RESPONSE,  # check before the generic key
+        "point at one through-line": WISDOM_RESPONSE,  # check before generic
         "CONVERSATION:": EXTRACTION_RESPONSE,
     }, default=EXTRACTION_RESPONSE)
 

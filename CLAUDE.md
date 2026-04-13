@@ -190,32 +190,23 @@ project-invariants.md                          → Product invariants (5 non-neg
 
 ## Rendering MCP Tool Results
 
-When `et_insight` returns JSON with `"_render": "wisdom_card"`, render it as a mind map in a code block. The insight crystallizes from its evidence concepts:
+When `et_insight` returns JSON with `"_render": "noticing"`, the `card` field is already-rendered plain text. Print it as-is in a code block. The shape:
 
 ```
-         {marker} {concept1.name}
-        ╱
-{marker} {concept2.name} ───●─── {marker} {concept3.name}
-        ╲              ╱
-         ╲            ╱
-  {marker} {concept4.name} ──╯
-                ╲
-         ╔══════════════════════════════════════╗
-         ║  ✦ {title}                           ║
-         ╚══════════════════════════════════════╝
+  {one-sentence noticing in plain English}
 
-  WHY  {first sentence of why — keep it to 1-2 lines}
+  {one paragraph, plain language, the why}
 
-  DO   {first sentence of action — keep it to 1-2 lines}
+  seen in: concept-a, concept-b, concept-c
+
+  maybe: {small action sentence, only when present}
 ```
 
 Rules:
-- Arrange evidence concepts as nodes flowing into the insight
-- Use category markers: ◦ topic, ◈ theme, ◇ decision, ⚡ tension, ? question, ● entity
-- The insight box (╔══╗) sits at the convergence point
-- WHY and DO are 1-2 lines each — minimal, not the full description
-- After the mind map, say: "Say **tell me more** to explore any concept, or **why** for the full reasoning."
-- Keep it compact. The mind map should fit in ~15-20 lines.
+- Print the `card` verbatim — formatting is already done by ET.
+- After the card, offer one short follow-up: "Want me to dig into one of these concepts? Try **et_explore <name>**."
+- Do not embellish the noticing with extra summaries or interpretations. The card IS the insight; layering on commentary dilutes it.
+- Mind maps and ASCII diagrams are out — the noticing is the artifact. If a user explicitly asks for the relationship structure, surface it via `et_path` or `et_graph`, not by re-rendering the card.
 
 When `et_explore` returns JSON with `"_render": "concept_detail"`, render the concept with its connections and source quote in a focused view:
 
