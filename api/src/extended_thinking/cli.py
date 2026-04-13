@@ -2,12 +2,13 @@
 """Extended-thinking CLI.
 
 Usage:
-  et insight            # sync + generate wisdom
-  et concepts           # list concepts
-  et sync               # pull from provider
-  et stats              # show stats
-  et init               # register ET as an MCP server with CC / Claude Desktop
-  et mcp-serve          # run the MCP server (usually invoked by a client, not humans)
+  et insight              # sync + generate wisdom
+  et concepts             # list concepts
+  et sync                 # pull from provider
+  et stats                # show stats
+  et init                 # register ET as an MCP server with CC / Claude Desktop
+  et reset [--go-home]    # wipe all ET state (dry-run unless --go-home)
+  et mcp-serve            # run the MCP server (usually invoked by a client, not humans)
 """
 
 from __future__ import annotations
@@ -197,6 +198,85 @@ def cmd_mcp_serve() -> int:
     return 0
 
 
+# ── et reset ─────────────────────────────────────────────────────────
+# Nukes every trace of ET on the machine. Dry-run by default — actual
+# deletion requires --go-home (the intent is "you're going home; start
+# over"). No partial modes: all three locations go together or the
+# command does nothing. Anything subtler is a config edit, not a reset.
+
+def _reset_targets() -> list[tuple[str, Path]]:
+    """The three locations ET occupies on disk."""
+    from extended_thinking.config import settings
+    from extended_thinking.config.paths import LEGACY_DATA_DIR, user_config_dir
+
+    return [
+        ("data", settings.data.root),
+        ("config", user_config_dir()),
+        ("legacy", LEGACY_DATA_DIR),
+    ]
+
+
+def cmd_reset(go_home: bool = False) -> int:
+    """`et reset` — wipe all ET state. Dry-run unless --go-home is set."""
+    from extended_thinking.config.migrate import _dir_size
+
+    targets = _reset_targets()
+    present = [(label, path, _dir_size(path)) for label, path, *_ in
+               [(lbl, p) for lbl, p in targets] if path.exists()]
+
+    mode = "going home" if go_home else "dry-run"
+    print(style.header("reset", right=mode))
+    print()
+
+    if not present:
+        print(style.notice(
+            "nothing to reset — no ET state found on this machine.",
+            tone="warn",
+        ))
+        return 0
+
+    if not go_home:
+        # Preview: list what would be deleted, with sizes.
+        rows = []
+        total = 0
+        path_w = max(len(str(p).replace(str(Path.home()), "~")) for _, p, _ in present)
+        for label, path, size in present:
+            path_str = str(path).replace(str(Path.home()), "~")
+            total += size
+            rows.append(
+                f"  {style.dim(label):<14}  {path_str:<{path_w}}  {_humanize_bytes(size):>10}"
+            )
+
+        print(style.notice(
+            "about to remove every trace of ET on this machine.",
+            *rows,
+            "",
+            f"  {style.dim('total')}         {_humanize_bytes(total):>10}  across {len(present)} location{'s' if len(present) != 1 else ''}.",
+            "",
+            f"run {style.accent('et reset --go-home')} to actually do it.",
+            tone="warn",
+        ))
+        return 0
+
+    # Real deletion.
+    failures: list[str] = []
+    for label, path, size in present:
+        try:
+            shutil.rmtree(path)
+            print(f"  {style.row('ok', [f'{label:<10}  removed  ({_humanize_bytes(size)})'])}")
+        except OSError as e:
+            failures.append(f"{label}: {e}")
+            print(f"  {style.row('fail', [f'{label:<10}  {e}'])}")
+
+    print()
+    if failures:
+        print(style.hint(f"  {len(failures)} location{'s' if len(failures) != 1 else ''} could not be removed; see above"))
+        return 1
+
+    print(style.hint("  clean slate. run et sync to start over."))
+    return 0
+
+
 # ── et init ──────────────────────────────────────────────────────────────────
 
 MCP_SERVER_KEY = "extended-thinking"
@@ -293,6 +373,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p_init = sub.add_parser("init", help="register ET as an MCP server with CC / Claude Desktop")
     p_init.add_argument("--dry-run", action="store_true", help="show what would change, write nothing")
 
+    p_reset = sub.add_parser("reset", help="wipe all ET state (dry-run unless --go-home)")
+    p_reset.add_argument("--go-home", action="store_true",
+                         help="actually delete; without this flag, reset previews only")
+
     # `et config ...` — ADR 012
     p_cfg = sub.add_parser("config", help="inspect or edit ET configuration")
     cfg_sub = p_cfg.add_subparsers(dest="config_cmd", required=True)
@@ -329,6 +413,8 @@ def _dispatch(args) -> int:
         return cmd_stats()
     if args.cmd == "init":
         return cmd_init(dry_run=args.dry_run)
+    if args.cmd == "reset":
+        return cmd_reset(go_home=args.go_home)
     if args.cmd == "mcp-serve":
         return cmd_mcp_serve()
     if args.cmd == "config":
