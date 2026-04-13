@@ -202,14 +202,13 @@ class _SyncReporter:
         "enrich":  "up",
     }
 
-    # Fingertip cycle during a phase. Opens with eyes-only ("none"),
-    # the hand materializes ("rest"), then the tip pulses up the
-    # intensity ladder and back. Each phase re-runs this cycle from
-    # the top — "eyes pop, finger reaches, fingertip burns."
+    # Fingertip cycle during a phase — the hand is already present, just
+    # pulsing through the intensity ladder. The "eyes pop" moment lives
+    # in a separate one-time wake_up() animation before sync begins, so
+    # every phase can get right to business with finger fun.
     _GLOW_CYCLE = [
-        "none", "none",            # eyes pop — face only, no hand
-        "rest",                     # hand appears, dim
-        "spark", "small", "lit",    # finger warms
+        "rest",                     # resting between beats
+        "spark", "small", "lit",    # warms up
         "burn",                     # peak glow
         "lit", "small", "spark",    # fades back
     ]
@@ -248,9 +247,9 @@ class _SyncReporter:
             self._active_phase = phase
             self._active_detail = ""
             self._t_phase = self._time.monotonic()
-            # Reset the glow cycle to frame 0 — the "none" state where
-            # ET's eyes pop before the finger reaches out.
-            self._frame = 0
+            # Don't reset _frame — let the pulse run continuously across
+            # phase transitions so ET's finger never hard-cuts back to
+            # dim between phases.
             self._paint_spinner()
         elif event == "tick":
             if self._active_phase != phase:
@@ -280,6 +279,33 @@ class _SyncReporter:
                 self._twitch_face = None
             if self._active_phase is not None:
                 self._paint_spinner()
+
+    async def wake_up(self):
+        """One-time pre-sync animation: eyes pop alone, blink once, settle.
+
+        Renders on the row where the first phase's sprite will appear.
+        Cleared before sync starts so the first phase paint takes over.
+        Total wall time ~650ms — long enough to notice, short enough to
+        feel like a greeting, not a loading screen.
+        """
+        import asyncio
+        if not self._tty:
+            return
+        # Eyes pop
+        sys.stdout.write(f"  {style.FACES['open']}\r")
+        sys.stdout.flush()
+        await asyncio.sleep(0.35)
+        # Blink
+        sys.stdout.write(f"  {style.FACES['blink']}\r")
+        sys.stdout.flush()
+        await asyncio.sleep(0.12)
+        # Back to open
+        sys.stdout.write(f"  {style.FACES['open']}\r")
+        sys.stdout.flush()
+        await asyncio.sleep(0.18)
+        # Clear so the first phase's paint starts fresh
+        sys.stdout.write("\r\033[K")
+        sys.stdout.flush()
 
     # ── Rendering ─────────────────────────────────────────────────────
 
@@ -590,15 +616,16 @@ def _sync_mood(delta: int, enrichment: dict | None) -> str:
 async def _run_sync_with_reporter(pipeline):
     """Run sync() with the live spinner reporter in parallel.
 
-    The reporter is itself a callback; a sibling asyncio task just keeps
-    the spinner frame ticking at ~80ms so the active phase line looks
-    alive during long awaits (Haiku extraction in particular).
+    Before sync starts, plays a brief one-time wake_up() animation
+    (eyes pop, blink, settle) — the "hello" moment. Then phases run
+    with their finger-pulse animations.
     """
     import contextlib
 
     reporter = _SyncReporter()
     spin_task = asyncio.create_task(reporter.spin())
     try:
+        await reporter.wake_up()
         result = await pipeline.sync(on_progress=reporter)
     finally:
         reporter.finish()
@@ -716,27 +743,32 @@ def cmd_reset(go_home: bool = False) -> int:
         ))
         return 0
 
-    # Real deletion. ET's face fades through half-closed to closed as
-    # each location gets wiped — "going home" rendered in three frames.
-    fade_faces = ["open", "narrow", "blink"]
+    # Real deletion. Plain rows — one ET signature at the end, not per
+    # location, so the transcript reads "work done, now home."
     failures: list[str] = []
-    for i, (label, path, size) in enumerate(present):
-        face_key = fade_faces[min(i, len(fade_faces) - 1)]
-        sprite = style.mascot(face_key, "rest")
+    for label, path, size in present:
         try:
             shutil.rmtree(path)
-            print(f"  {sprite}  {style.ok_tone('✓')}  {label:<10}  removed  ({_humanize_bytes(size)})")
+            print(
+                f"  {style.ok_tone('✓')}  {label:<10}  "
+                f"removed  ({_humanize_bytes(size)})"
+            )
         except OSError as e:
             failures.append(f"{label}: {e}")
-            print(f"  {sprite}  {style.err_tone('✗')}  {label:<10}  {e}")
+            print(f"  {style.err_tone('✗')}  {label:<10}  {e}")
 
     print()
     if failures:
-        print(style.hint(f"  {len(failures)} location{'s' if len(failures) != 1 else ''} could not be removed; see above"))
+        print(style.signature(
+            "wink_l", "rest",
+            note=f"{len(failures)} location{'s' if len(failures) != 1 else ''} could not be removed.",
+        ))
         return 1
-
-    # Final frame — ET fully home, eyes closed.
-    print(f"  {style.mascot('blink', 'rest')}  {style.dim('clean slate. run et sync to start over.')}")
+    # ET fully home, eyes closed — one sign-off line.
+    print(style.signature(
+        "blink", "rest",
+        note="clean slate. run et sync to start over.",
+    ))
     return 0
 
 
