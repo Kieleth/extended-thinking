@@ -43,6 +43,10 @@ jobs:
           cd api && python -m pytest tests/ --ignore=tests/acceptance --tb=short
 
       - name: Acceptance tests (fast path + cassette replay)
+        env:
+          # Dummy key so the provider registry initializes. Cassette replay
+          # intercepts HTTP before the key matters; this is not a real key.
+          ANTHROPIC_API_KEY: sk-ant-ci-replay-dummy-key-not-real
         run: |
           cd api && python -m pytest tests/acceptance/ -m "acceptance or vcr" --tb=short
 
