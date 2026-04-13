@@ -139,26 +139,75 @@ def cmd_concepts(limit: int = 20) -> int:
     return 0
 
 
+class _SyncReporter:
+    """Phase-boundary reporter for `Pipeline.sync(on_progress=...)`.
+
+    Each call prints one line: `·  phase-label           detail   1.4s`.
+    Lines are flushed as they arrive so the user sees stages narrate in
+    real time. No cursor tricks, no in-place redraws — Unix semantics,
+    one completed event per line.
+
+    Labels are deliberately human: `reading provider`, not `read`. The
+    pipeline emits the short phase-id; the reporter provides the copy.
+    """
+
+    _LABELS = {
+        "read":    "reading provider",
+        "filter":  "filtering content",
+        "index":   "indexing vectors",
+        "extract": "extracting concepts",
+        "resolve": "resolving entities",
+        "relate":  "detecting relationships",
+        "enrich":  "enriching with knowledge",
+    }
+
+    def __init__(self):
+        import time
+        self._time = time
+        self._t_start = time.monotonic()
+        self._t_phase = self._t_start
+        self._label_w = max(len(v) for v in self._LABELS.values())
+
+    def __call__(self, phase: str, detail: str) -> None:
+        now = self._time.monotonic()
+        elapsed = now - self._t_phase
+        self._t_phase = now
+        label = self._LABELS.get(phase, phase)
+        elapsed_str = f"{elapsed:>5.1f}s"
+        print(
+            f"  {style.dim('·')}  "
+            f"{label:<{self._label_w + 2}}"
+            f"{detail:<42}"
+            f"{style.dim(elapsed_str)}"
+        )
+
+    def total(self) -> float:
+        return self._time.monotonic() - self._t_start
+
+
 def cmd_sync() -> int:
     pipeline = _get_pipeline()
 
-    stats = pipeline.store.get_stats()
     provider = pipeline.provider if hasattr(pipeline, "provider") else None
     provider_name = getattr(provider, "name", "?") if provider else "?"
 
     print(style.header("sync", right=provider_name))
     print()
 
-    result = asyncio.run(pipeline.sync())
+    reporter = _SyncReporter()
+    result = asyncio.run(pipeline.sync(on_progress=reporter))
+    total_time = reporter.total()
     total = pipeline.store.get_stats()["total_concepts"]
 
     delta = result["concepts_extracted"]
     chunks = result["chunks_processed"]
     status = result.get("status", "synced")
 
-    # Grid: left column = what just happened, right column = graph state
+    print()
+    print(style.rule())
+    print()
     grid_rows = [
-        [("chunks", str(chunks)), ("concepts", str(total))],
+        [("chunks", str(chunks)), ("concepts", f"{total:,}")],
         [("+ concepts", f"+{delta}"), ("status", status)],
     ]
     enrichment = result.get("enrichment")
@@ -167,6 +216,7 @@ def cmd_sync() -> int:
             ("+ enriched", str(enrichment.get("knowledge_nodes_created", 0))),
             ("runs", str(enrichment.get("runs_recorded", 0))),
         ])
+    grid_rows.append([("elapsed", f"{total_time:.1f}s"), ("", "")])
     print(style.grid(grid_rows))
     return 0
 

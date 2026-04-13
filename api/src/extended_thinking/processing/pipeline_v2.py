@@ -69,22 +69,48 @@ class Pipeline:
 
     # ── Sync: extract concepts from new memories ─────────────────────
 
-    async def sync(self, limit: int = 100) -> dict:
+    async def sync(
+        self,
+        limit: int = 100,
+        *,
+        on_progress=None,
+    ) -> dict:
         """Pull recent memories from provider, extract concepts.
 
         Idempotent: tracks processed chunk IDs in SQLite. Same chunks
         are never re-processed, even across restarts.
 
+        Args:
+            limit: provider get_recent() cap.
+            on_progress: optional callback `(phase: str, detail: str) -> None`
+                called at each phase boundary. Phases in order:
+                    read, filter, index, extract, resolve, relate, enrich.
+                Lets the CLI narrate what's happening without coupling
+                Pipeline to a specific display layer.
+
         Returns summary: chunks_processed, concepts_extracted.
         """
+        def _progress(phase: str, detail: str) -> None:
+            if on_progress is not None:
+                try:
+                    on_progress(phase, detail)
+                except Exception:
+                    logger.exception("on_progress callback raised; continuing")
+
         all_chunks = self._provider.get_recent(since=self._last_sync, limit=limit)
+        _progress("read", f"{len(all_chunks)} chunks")
         if not all_chunks:
             # No provider data at all — enrichment (ADR 011 v2) still runs
             # because triggers watch the existing graph, not new chunks.
+            summary = self._run_enrichment_if_enabled()
+            if summary is not None:
+                _progress("enrich",
+                          f"{summary.knowledge_nodes_created} knowledge nodes, "
+                          f"{summary.runs_recorded} runs")
             return self._build_sync_result(
                 {"chunks_processed": 0, "concepts_extracted": 0,
                  "status": "no_new_data"},
-                self._run_enrichment_if_enabled(),
+                summary,
             )
 
         # Filter out already-processed chunks
@@ -97,12 +123,24 @@ class Pipeline:
         filtered_out = pre_filter - len(chunks)
         if filtered_out:
             logger.info("Content filter: %d thinking, %d code skipped", len(chunks), filtered_out)
+        deduped = len(all_chunks) - pre_filter
+        _progress(
+            "filter",
+            f"{len(chunks)} thinking"
+            + (f", {filtered_out} code skipped" if filtered_out else "")
+            + (f", {deduped} already processed" if deduped else ""),
+        )
 
         if not chunks:
+            summary = self._run_enrichment_if_enabled()
+            if summary is not None:
+                _progress("enrich",
+                          f"{summary.knowledge_nodes_created} knowledge nodes, "
+                          f"{summary.runs_recorded} runs")
             return self._build_sync_result(
                 {"chunks_processed": 0, "concepts_extracted": 0,
                  "filtered_code": filtered_out, "status": "no_new_data"},
-                self._run_enrichment_if_enabled(),
+                summary,
             )
 
         # Store chunks in VectorStore for semantic retrieval
@@ -122,6 +160,7 @@ class Pipeline:
                         ),
                     },
                 )
+            _progress("index", f"{len(chunks)} embeddings")
 
         # ADR 013 C8: providers returning structured data can skip extraction.
         # Conversation providers (default True) still run the Haiku pass.
@@ -138,6 +177,7 @@ class Pipeline:
             # Batch extraction: ~20 chunks per call for richer, more diverse concepts
             # (one giant batch yields sparse high-level concepts; small batches yield specifics)
             BATCH_SIZE = 20
+            n_batches = (len(chunks) + BATCH_SIZE - 1) // BATCH_SIZE
             for i in range(0, len(chunks), BATCH_SIZE):
                 batch = chunks[i:i + BATCH_SIZE]
                 batch_concepts = await extract_concepts_from_chunks(
@@ -146,6 +186,10 @@ class Pipeline:
                 )
                 concepts.extend(batch_concepts)
                 all_chunk_batches.append((batch, batch_concepts))
+            _progress(
+                "extract",
+                f"{len(concepts)} concepts · {n_batches} batch{'es' if n_batches != 1 else ''} · haiku",
+            )
         else:
             # Structured-ingest mode: chunks still get stored + provenance
             # recorded downstream, but we don't emit Concept nodes for them.
@@ -157,6 +201,8 @@ class Pipeline:
 
         # Store extracted concepts with entity resolution + provenance (per batch)
         supersession_count = 0
+        merge_count = 0
+        new_count = 0
         for batch_chunks, batch_concepts in all_chunk_batches:
             # Resolve resolution plugins once per batch (cheap, reused across concepts)
             resolution_algs = _get_resolution_algorithms(self._vectors is not None)
@@ -173,6 +219,7 @@ class Pipeline:
                                 similar.get("_resolved_by", "?"), concept.name, similar["name"])
                     self._store.merge_concept(concept_id, similar["id"])
                     concept_id = similar["id"]
+                    merge_count += 1
                 else:
                     self._store.add_concept(
                         concept_id=concept_id,
@@ -181,6 +228,7 @@ class Pipeline:
                         description=concept.description,
                         source_quote=concept.source_quote,
                     )
+                    new_count += 1
 
                 # Contradiction detection: expire edges from superseded concepts
                 # (ADR 002: bitemporal with supersession)
@@ -221,6 +269,13 @@ class Pipeline:
                     source_type=_infer_source_type(source_chunk),
                 )
 
+        if extract_enabled and (merge_count or new_count):
+            _progress(
+                "resolve",
+                f"{merge_count} merged, {new_count} new"
+                + (f", {supersession_count} superseded" if supersession_count else ""),
+            )
+
         # Mark chunks as processed (idempotent across restarts).
         # t_source_created carries the original write-time (conversation
         # timestamp, file mtime). t_ingested is set to now inside the store.
@@ -234,8 +289,13 @@ class Pipeline:
 
         # Detect co-occurrence relationships per batch
         # (each extraction call sees a batch, concepts within a batch are related)
+        n_rels_before = self._store.get_stats().get("total_relationships", 0)
         for batch_chunks, batch_concepts in all_chunk_batches:
             self._detect_relationships(batch_chunks, batch_concepts)
+        n_rels_after = self._store.get_stats().get("total_relationships", 0)
+        rel_delta = n_rels_after - n_rels_before
+        if rel_delta:
+            _progress("relate", f"{rel_delta} co-occurrence edge{'s' if rel_delta != 1 else ''}")
 
         # Update sync marker
         if chunks:
@@ -245,6 +305,12 @@ class Pipeline:
         # Entirely gated on [enrichment] enabled; internal-only users see
         # no external calls, no runner invocation, no telemetry writes.
         enrichment_summary = self._run_enrichment_if_enabled()
+        if enrichment_summary is not None:
+            _progress(
+                "enrich",
+                f"{enrichment_summary.knowledge_nodes_created} knowledge nodes, "
+                f"{enrichment_summary.runs_recorded} run{'s' if enrichment_summary.runs_recorded != 1 else ''}",
+            )
 
         logger.info(
             "Synced: %d chunks → %d concepts (%d code filtered, %d superseded, "
