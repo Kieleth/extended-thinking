@@ -126,7 +126,7 @@ def cmd_insight(force: bool = False) -> int:
 
     print()
     if wisdoms:
-        print(_render_insight(wisdoms[0], concepts))
+        print(_render_insight(wisdoms[0], concepts, store=pipeline.store))
         # The noticing IS the moment — quiet sign-off.
         print()
         print(style.signature("up", "lit", glowing=True, note="noticing."))

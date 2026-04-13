@@ -50,29 +50,41 @@ def _get_unified_graph(pipeline):
 MARKERS = {"topic": "◦", "theme": "◈", "decision": "◇", "tension": "⚡", "question": "?", "entity": "●"}
 
 
-def _render_insight(wisdom: dict, concepts: list[dict]) -> str:
-    """Render an insight as a noticing card.
+def _render_insight(wisdom: dict, concepts: list[dict], store=None) -> str:
+    """Render an insight as a noticing card with an audit trail.
 
-    Plain text. The headline is the noticing in one sentence; the
-    paragraph below is the why; the source concepts go in a dim footer.
-    Optional small action only when the model genuinely had one to add.
-    No mind map, no ASCII boxes — the noticing IS the artifact.
+    The noticing is one sentence; the why is a paragraph; then an
+    audit column: for each cited concept, the smoking-gun quote + a
+    relative date + which provider it came from. That's Invariant 1
+    (every insight traces to evidence) rendered into the UX instead of
+    buried in the graph.
 
     Output shape:
 
       <title sentence>
 
-      <why paragraph, wrapped to ~72 chars>
+      <why paragraph>
 
-      seen in: concept-a, concept-b, concept-c
+      seen in:
+
+        ◦ concept-a
+          "the quote that captured it"
+          · 2d ago · claude-code
+
+        ⚡ concept-b
+          "another quote"
+          · 4d ago · folder (~/vault/notes)
 
       maybe: <action sentence>     (only if action present)
+
+    `store` is optional — when provided, per-concept provenance is
+    queried so the audit column can cite source + date. Without it,
+    the card falls back to a simple "seen in: a, b, c" footer.
     """
     from extended_thinking import cli_style as style
 
     title = wisdom.get("title", "").strip()
     description = wisdom.get("description", "").strip()
-    wisdom_type = wisdom.get("wisdom_type", wisdom.get("type", "noticing"))
 
     # Description carries `**Why:** … **Action:** …` for legacy rows;
     # newer noticings store just the why.
@@ -87,16 +99,14 @@ def _render_insight(wisdom: dict, concepts: list[dict]) -> str:
         else:
             why_text = body.strip()
 
-    # Action is only worth showing if the model gave us a real one.
     if action_text.lower() in ("none", "", "n/a", "tbd"):
         action_text = ""
 
-    # Resolve evidence concepts. Honor the wisdom's own related_concept_ids;
-    # fall back to top concepts if none were attached.
     related_ids = set(wisdom.get("related_concept_ids", []))
     related = [c for c in concepts if c["id"] in related_ids]
     if not related:
-        related = concepts[:3]
+        related = concepts[:5]
+    related = related[:5]  # cap at five so the audit column stays readable
 
     lines: list[str] = []
     if title:
@@ -107,15 +117,135 @@ def _render_insight(wisdom: dict, concepts: list[dict]) -> str:
         for wl in _word_wrap(why_text, 72):
             lines.append(f"  {wl}")
         lines.append("")
+
     if related:
-        names = ", ".join(r.get("name", r["id"]) for r in related[:5])
-        lines.append(f"  {style.dim('seen in: ' + names)}")
+        lines.append(f"  {style.dim('seen in:')}")
+        lines.append("")
+        for r in related:
+            lines.extend(_render_audit_row(r, store))
+            lines.append("")
+        if lines[-1] == "":
+            lines.pop()  # trim trailing blank before the action
+
     if action_text:
         lines.append("")
         for al in _word_wrap(f"maybe: {action_text}", 72):
             lines.append(f"  {style.dim(al)}")
 
     return "\n".join(lines)
+
+
+def _render_audit_row(concept: dict, store) -> list[str]:
+    """Render one evidence row: marker + name, the quote, provenance meta.
+
+    Three lines:
+      ◦ concept name
+        "the source quote that captured this concept"
+        · 2d ago · claude-code session
+
+    When store is None or provenance is empty, the meta line degrades
+    to just the category. The quote is truncated to ~90 chars with an
+    ellipsis so long extractor quotes don't overflow the card.
+    """
+    from extended_thinking import cli_style as style
+
+    marker = MARKERS.get(concept.get("category", ""), "·")
+    name = concept.get("name", concept.get("id", "?"))
+    quote = (concept.get("source_quote") or "").strip()
+    if len(quote) > 90:
+        quote = quote[:87].rstrip() + "…"
+
+    rows: list[str] = [f"    {marker} {name}"]
+    if quote:
+        rows.append(f'      {style.dim(f"“{quote}”")}')
+
+    meta = _provenance_meta(concept, store)
+    if meta:
+        rows.append(f"      {style.dim(f'· {meta}')}")
+
+    return rows
+
+
+def _provenance_meta(concept: dict, store) -> str:
+    """Best-effort `<when> · <provider>` one-liner for a concept.
+
+    Pulls the most recent HasProvenance edge for the concept; falls
+    back to `last_seen` on the concept row when provenance is missing.
+    Returns an empty string if nothing is resolvable.
+    """
+    cid = concept.get("id")
+    when = _humanize_iso(concept.get("last_seen") or concept.get("first_seen") or "")
+    provider = ""
+
+    if store is not None and hasattr(store, "get_concept_sources") and cid:
+        try:
+            sources = store.get_concept_sources(cid) or []
+        except Exception:  # noqa: BLE001
+            sources = []
+        if sources:
+            # Prefer the newest source entry; providers usually stamp a timestamp.
+            sources.sort(key=lambda s: s.get("timestamp", ""), reverse=True)
+            top = sources[0]
+            prov_name = top.get("provider") or top.get("source_provider") or ""
+            src_path = top.get("source") or ""
+            ts = top.get("timestamp") or ""
+            if ts:
+                when = _humanize_iso(ts) or when
+            if prov_name:
+                # Short path hint when available (~/Documents, ~/vault/notes).
+                hint = ""
+                if src_path:
+                    import re
+                    from pathlib import Path
+                    try:
+                        p = Path(src_path)
+                        # If the source looks like a file, show its parent dir.
+                        if p.suffix:
+                            parent = str(p.parent)
+                        else:
+                            parent = str(p)
+                        home = str(Path.home())
+                        parent = parent.replace(home, "~")
+                        hint = re.sub(r"/+$", "", parent)
+                    except Exception:  # noqa: BLE001
+                        hint = ""
+                provider = f"{prov_name} ({hint})" if hint else prov_name
+
+    parts = [p for p in (when, provider) if p]
+    return " · ".join(parts)
+
+
+def _humanize_iso(ts: str) -> str:
+    """Relative-time string for an ISO timestamp: today / yesterday /
+    Nd ago / Nw ago / Nmo ago / Ny ago. Falls back to the raw date."""
+    if not ts:
+        return ""
+    try:
+        from datetime import datetime, timezone
+        s = ts.replace("Z", "+00:00") if ts.endswith("Z") else ts
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        delta = datetime.now(timezone.utc) - dt
+        days = delta.days
+        if days < 0:
+            return "future"
+        if days == 0:
+            return "today"
+        if days == 1:
+            return "yesterday"
+        if days < 7:
+            return f"{days}d ago"
+        if days < 30:
+            weeks = days // 7
+            return f"{weeks}w ago"
+        if days < 365:
+            months = days // 30
+            return f"{months}mo ago"
+        years = days // 365
+        return f"{years}y ago"
+    except Exception:  # noqa: BLE001
+        return ts[:10] or ""
 
 
 def _render_concepts(concepts: list[dict]) -> str:
@@ -683,7 +813,7 @@ async def handle_tool_call(name: str, arguments: dict) -> str:
         if insight["type"] in ("noticing", "wisdom", "reflection"):
             wisdoms = pipeline.store.list_wisdoms(limit=1)
             if wisdoms:
-                rendered = _render_insight(wisdoms[0], concepts)
+                rendered = _render_insight(wisdoms[0], concepts, store=pipeline.store)
                 return json.dumps({
                     "_render": "noticing",
                     "card": rendered,
