@@ -103,8 +103,12 @@ FACES = {
 # `none` hides the hand entirely — the phase-opening frame where only
 # eyes are visible, before the finger reaches out.
 HANDS = {
-    "none":       ("",  "",  ""),    # no hand at all — eyes pop
-    "rest":       ("╭", "",  "╮"),   # no glow
+    "none":       ("",  "",  ""),    # no hand at all — wake_up only
+    # All visible hands are 3 cells wide — `rest` gets an invisible
+    # space between the corners so the label column after the sprite
+    # doesn't jitter left-right as the glow cycle animates through
+    # rest → spark → small → lit → burn → back.
+    "rest":       ("╭", " ", "╮"),   # no glow, 3 cells
     "spark":      ("╭", "·", "╮"),   # warming up
     "small":      ("╭", "•", "╮"),
     "lit":        ("╭", "●", "╮"),

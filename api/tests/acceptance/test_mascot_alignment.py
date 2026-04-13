@@ -73,16 +73,19 @@ class TestVocabularyWidths:
             f"HANDS[{name!r}] = {(l, mid, r)!r} width mismatch."
         )
 
-    def test_rest_hand_is_two_cells(self):
-        l, mid, r = HANDS["rest"]
-        assert _cell_width(f"{l}{mid}{r}") == 2
-
-    @pytest.mark.parametrize("name", ["spark", "small", "lit", "burn"])
-    def test_glowing_hands_are_three_cells(self, name):
+    @pytest.mark.parametrize("name", ["rest", "spark", "small", "lit", "burn"])
+    def test_visible_hands_are_three_cells(self, name):
+        """Every visible hand renders at exactly 3 cells. Without this
+        the label column shifts left/right as the glow cycle animates
+        between `rest` (would be 2 cells) and the glowing frames (3)."""
         l, mid, r = HANDS[name]
         assert _cell_width(f"{l}{mid}{r}") == 3, (
             f"hand {name!r} should be 3 cells ({l!r}+{mid!r}+{r!r})"
         )
+
+    def test_none_hand_is_zero_cells(self):
+        l, mid, r = HANDS["none"]
+        assert _cell_width(f"{l}{mid}{r}") == 0
 
 
 # ── Composed one-line sprite ─────────────────────────────────────────
