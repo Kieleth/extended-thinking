@@ -140,12 +140,19 @@ def cmd_concepts(limit: int = 20) -> int:
 
 
 class _SyncReporter:
-    """Phase-boundary reporter for `Pipeline.sync(on_progress=...)`.
+    """Live phase reporter for `Pipeline.sync(on_progress=...)`.
 
-    Each call prints one line: `·  phase-label           detail   1.4s`.
-    Lines are flushed as they arrive so the user sees stages narrate in
-    real time. No cursor tricks, no in-place redraws — Unix semantics,
-    one completed event per line.
+    Receives start / tick / done events and renders each phase as:
+
+        ⠋  extracting concepts     batch 2/4 · haiku
+
+    …with the spinner char rotating every ~80ms while the phase is
+    active. On `done`, the line finalizes to:
+
+        ·  extracting concepts     34 concepts · 4 batches · haiku   8.2s
+
+    and a fresh spinner spawns below for the next phase. Unix semantics
+    hold — piped output skips ANSI and prints completion lines only.
 
     Labels are deliberately human: `reading provider`, not `read`. The
     pipeline emits the short phase-id; the reporter provides the copy.
@@ -161,31 +168,176 @@ class _SyncReporter:
         "enrich":  "enriching with knowledge",
     }
 
+    # Braille spinner — Classical cli vocabulary (cargo, npm, oil).
+    # Looks kinetic at 80ms frame intervals without getting in the way.
+    _FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+
     def __init__(self):
         import time
         self._time = time
         self._t_start = time.monotonic()
         self._t_phase = self._t_start
         self._label_w = max(len(v) for v in self._LABELS.values())
+        self._active_phase: str | None = None
+        self._active_detail: str = ""
+        self._frame = 0
+        self._tty = sys.stdout.isatty() and _os.environ.get("NO_COLOR") is None
+        self._last_paint_len = 0
 
-    def __call__(self, phase: str, detail: str) -> None:
+    # ── Event callback ────────────────────────────────────────────────
+
+    def __call__(self, event: str, phase: str, detail: str = "") -> None:
+        if event == "start":
+            self._active_phase = phase
+            self._active_detail = ""
+            self._t_phase = self._time.monotonic()
+            self._paint_spinner()
+        elif event == "tick":
+            if self._active_phase != phase:
+                # Event arrived out of order; normalize
+                self._active_phase = phase
+                self._t_phase = self._time.monotonic()
+            self._active_detail = detail
+            self._paint_spinner()
+        elif event == "done":
+            self._finalize(detail)
+
+    # ── Spinner loop (called by a background asyncio task) ────────────
+
+    async def spin(self):
+        import asyncio
+        while True:
+            await asyncio.sleep(0.08)
+            self._frame += 1
+            if self._active_phase is not None:
+                self._paint_spinner()
+
+    # ── Rendering ─────────────────────────────────────────────────────
+
+    def _paint_spinner(self) -> None:
+        if self._active_phase is None:
+            return
+        label = self._LABELS.get(self._active_phase, self._active_phase)
+        frame = self._FRAMES[self._frame % len(self._FRAMES)]
+        detail = self._active_detail or "…"
+        line = (
+            f"  {style.accent(frame)}  "
+            f"{label:<{self._label_w + 2}}"
+            f"{style.dim(detail)}"
+        )
+        if self._tty:
+            # \r returns to column 0; \033[K clears to end of line so stale
+            # chars from a longer previous detail don't bleed through.
+            sys.stdout.write(f"\r{line}\033[K")
+            sys.stdout.flush()
+
+    def _finalize(self, detail: str) -> None:
+        if self._active_phase is None:
+            return
         now = self._time.monotonic()
         elapsed = now - self._t_phase
-        self._t_phase = now
-        label = self._LABELS.get(phase, phase)
-        elapsed_str = f"{elapsed:>5.1f}s"
-        print(
+        label = self._LABELS.get(self._active_phase, self._active_phase)
+        line = (
             f"  {style.dim('·')}  "
             f"{label:<{self._label_w + 2}}"
             f"{detail:<42}"
-            f"{style.dim(elapsed_str)}"
+            f"{style.dim(f'{elapsed:>5.1f}s')}"
         )
+        if self._tty:
+            sys.stdout.write(f"\r{line}\033[K\n")
+            sys.stdout.flush()
+        else:
+            print(line)
+        self._active_phase = None
+        self._active_detail = ""
+
+    def finish(self) -> None:
+        """Called once sync() returns. Clears any trailing spinner."""
+        if self._tty and self._active_phase is not None:
+            sys.stdout.write("\r\033[K")
+            sys.stdout.flush()
+        self._active_phase = None
 
     def total(self) -> float:
         return self._time.monotonic() - self._t_start
 
 
-def cmd_sync() -> int:
+def _confirm_sources(pipeline, assume_yes: bool) -> bool:
+    """Show detected sources before sync runs; ask to proceed.
+
+    Returns True to proceed, False to bail. AutoProvider's sub-providers
+    each carry `name` + `get_stats()`; we render one row per provider
+    with its memory count. Non-AutoProviders render as a single row.
+    """
+    provider = pipeline.provider
+    sub = getattr(provider, "_providers", None)
+
+    rows: list[tuple[str, str, str]] = []  # (label, path, count)
+    if sub is not None:
+        for p in sub:
+            count = p.get_stats().get("total_memories", 0)
+            path = _describe_provider_path(p)
+            rows.append((p.name, path, f"{count:,} memories"))
+    else:
+        count = provider.get_stats().get("total_memories", 0)
+        rows.append((provider.name, _describe_provider_path(provider), f"{count:,} memories"))
+
+    if not rows:
+        print(style.notice("no providers detected. configure one in ~/.config/extended-thinking/config.toml.", tone="warn"))
+        return False
+
+    label_w = max(len(r[0]) for r in rows)
+    path_w = max(len(r[1]) for r in rows)
+    print(f"  {style.dim('found')}  {len(rows)} source{'s' if len(rows) != 1 else ''}:")
+    print()
+    for name, path, count in rows:
+        print(f"    {name:<{label_w}}   {style.dim(path):<{path_w}}   {count}")
+    print()
+
+    if assume_yes or not sys.stdout.isatty():
+        print(style.hint("  proceeding (--yes)" if assume_yes else "  proceeding (non-interactive)"))
+        print()
+        return True
+
+    try:
+        answer = input(f"  {style.dim('proceed?')} [Y/n] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+    print()
+    return answer in ("", "y", "yes")
+
+
+def _describe_provider_path(p) -> str:
+    """Best-effort one-line description of where a provider reads from.
+
+    Providers store their roots under private attrs (_projects_dir,
+    _root, _workspace_dir, etc.) and also surface them via get_stats().
+    Check both, prefer the attr over the stats round-trip.
+    """
+    for attr in (
+        "projects_dir", "_projects_dir",
+        "root", "_root",
+        "path", "_path",
+        "export_path", "_export_path",
+        "workspace_dir", "_workspace_dir",
+        "folder", "_folder",
+    ):
+        v = getattr(p, attr, None)
+        if v:
+            return str(v).replace(str(Path.home()), "~")
+    try:
+        stats = p.get_stats()
+        for key in ("projects_dir", "root", "path", "export_path"):
+            v = stats.get(key)
+            if v:
+                return str(v).replace(str(Path.home()), "~")
+    except Exception:  # noqa: BLE001
+        pass
+    return "(configured)"
+
+
+def cmd_sync(yes: bool = False) -> int:
     pipeline = _get_pipeline()
 
     provider = pipeline.provider if hasattr(pipeline, "provider") else None
@@ -194,9 +346,12 @@ def cmd_sync() -> int:
     print(style.header("sync", right=provider_name))
     print()
 
-    reporter = _SyncReporter()
-    result = asyncio.run(pipeline.sync(on_progress=reporter))
-    total_time = reporter.total()
+    # Pre-flight: show what we're about to ingest from, confirm.
+    if not _confirm_sources(pipeline, assume_yes=yes):
+        print(style.hint("  cancelled."))
+        return 0
+
+    result, total_time = asyncio.run(_run_sync_with_reporter(pipeline))
     total = pipeline.store.get_stats()["total_concepts"]
 
     delta = result["concepts_extracted"]
@@ -219,6 +374,27 @@ def cmd_sync() -> int:
     grid_rows.append([("elapsed", f"{total_time:.1f}s"), ("", "")])
     print(style.grid(grid_rows))
     return 0
+
+
+async def _run_sync_with_reporter(pipeline):
+    """Run sync() with the live spinner reporter in parallel.
+
+    The reporter is itself a callback; a sibling asyncio task just keeps
+    the spinner frame ticking at ~80ms so the active phase line looks
+    alive during long awaits (Haiku extraction in particular).
+    """
+    reporter = _SyncReporter()
+    spin_task = asyncio.create_task(reporter.spin())
+    try:
+        result = await pipeline.sync(on_progress=reporter)
+    finally:
+        reporter.finish()
+        spin_task.cancel()
+        try:
+            await spin_task
+        except asyncio.CancelledError:
+            pass
+    return result, reporter.total()
 
 
 def cmd_stats() -> int:
@@ -416,7 +592,9 @@ def _build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("insight", help="sync + generate wisdom").add_argument("--force", action="store_true")
     sub.add_parser("concepts", help="list concepts").add_argument("--limit", type=int, default=20)
-    sub.add_parser("sync", help="pull from provider")
+    p_sync = sub.add_parser("sync", help="pull from provider")
+    p_sync.add_argument("-y", "--yes", action="store_true",
+                        help="skip the source-confirmation prompt")
     sub.add_parser("stats", help="show stats")
     sub.add_parser("mcp-serve", help="run the MCP server (for clients)")
 
@@ -458,7 +636,7 @@ def _dispatch(args) -> int:
     if args.cmd == "concepts":
         return cmd_concepts(limit=args.limit)
     if args.cmd == "sync":
-        return cmd_sync()
+        return cmd_sync(yes=args.yes)
     if args.cmd == "stats":
         return cmd_stats()
     if args.cmd == "init":

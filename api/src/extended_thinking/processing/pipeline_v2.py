@@ -90,13 +90,24 @@ class Pipeline:
 
         Returns summary: chunks_processed, concepts_extracted.
         """
-        def _progress(phase: str, detail: str) -> None:
+        def _emit(event: str, phase: str, detail: str = "") -> None:
             if on_progress is not None:
                 try:
-                    on_progress(phase, detail)
+                    on_progress(event, phase, detail)
                 except Exception:
                     logger.exception("on_progress callback raised; continuing")
 
+        def _start(phase: str) -> None:
+            _emit("start", phase)
+
+        def _tick(phase: str, detail: str) -> None:
+            _emit("tick", phase, detail)
+
+        def _progress(phase: str, detail: str) -> None:
+            """Phase-done shortcut (kept for backwards compat inside this file)."""
+            _emit("done", phase, detail)
+
+        _start("read")
         all_chunks = self._provider.get_recent(since=self._last_sync, limit=limit)
         _progress("read", f"{len(all_chunks)} chunks")
         if not all_chunks:
@@ -114,6 +125,7 @@ class Pipeline:
             )
 
         # Filter out already-processed chunks
+        _start("filter")
         unprocessed_ids = self._store.filter_unprocessed([c.id for c in all_chunks])
         chunks = [c for c in all_chunks if c.id in set(unprocessed_ids)]
 
@@ -145,7 +157,8 @@ class Pipeline:
 
         # Store chunks in VectorStore for semantic retrieval
         if self._vectors is not None:
-            for chunk in chunks:
+            _start("index")
+            for i, chunk in enumerate(chunks, 1):
                 self._vectors.add(
                     id=chunk.id,
                     text=chunk.content,
@@ -160,6 +173,10 @@ class Pipeline:
                         ),
                     },
                 )
+                # Tick every 5 chunks so the reporter has fresh state for
+                # its 80ms redraw loop; cheap (just updates a variable).
+                if i % 5 == 0 or i == len(chunks):
+                    _tick("index", f"{i}/{len(chunks)}")
             _progress("index", f"{len(chunks)} embeddings")
 
         # ADR 013 C8: providers returning structured data can skip extraction.
@@ -178,7 +195,9 @@ class Pipeline:
             # (one giant batch yields sparse high-level concepts; small batches yield specifics)
             BATCH_SIZE = 20
             n_batches = (len(chunks) + BATCH_SIZE - 1) // BATCH_SIZE
-            for i in range(0, len(chunks), BATCH_SIZE):
+            _start("extract")
+            for batch_idx, i in enumerate(range(0, len(chunks), BATCH_SIZE), 1):
+                _tick("extract", f"batch {batch_idx}/{n_batches} · haiku")
                 batch = chunks[i:i + BATCH_SIZE]
                 batch_concepts = await extract_concepts_from_chunks(
                     batch,
@@ -200,9 +219,13 @@ class Pipeline:
             )
 
         # Store extracted concepts with entity resolution + provenance (per batch)
+        if extract_enabled and all_chunk_batches:
+            _start("resolve")
         supersession_count = 0
         merge_count = 0
         new_count = 0
+        concepts_seen = 0
+        total_concepts = sum(len(bc) for _, bc in all_chunk_batches)
         for batch_chunks, batch_concepts in all_chunk_batches:
             # Resolve resolution plugins once per batch (cheap, reused across concepts)
             resolution_algs = _get_resolution_algorithms(self._vectors is not None)
@@ -268,6 +291,9 @@ class Pipeline:
                     source=source_chunk.source or "",
                     source_type=_infer_source_type(source_chunk),
                 )
+                concepts_seen += 1
+                if total_concepts and (concepts_seen % 5 == 0 or concepts_seen == total_concepts):
+                    _tick("resolve", f"{concepts_seen}/{total_concepts}")
 
         if extract_enabled and (merge_count or new_count):
             _progress(
@@ -290,6 +316,8 @@ class Pipeline:
         # Detect co-occurrence relationships per batch
         # (each extraction call sees a batch, concepts within a batch are related)
         n_rels_before = self._store.get_stats().get("total_relationships", 0)
+        if all_chunk_batches:
+            _start("relate")
         for batch_chunks, batch_concepts in all_chunk_batches:
             self._detect_relationships(batch_chunks, batch_concepts)
         n_rels_after = self._store.get_stats().get("total_relationships", 0)
@@ -304,6 +332,9 @@ class Pipeline:
         # ADR 011 v2 — proactive enrichment at sync end.
         # Entirely gated on [enrichment] enabled; internal-only users see
         # no external calls, no runner invocation, no telemetry writes.
+        from extended_thinking.config import settings as _s
+        if _s.enrichment.enabled:
+            _start("enrich")
         enrichment_summary = self._run_enrichment_if_enabled()
         if enrichment_summary is not None:
             _progress(
