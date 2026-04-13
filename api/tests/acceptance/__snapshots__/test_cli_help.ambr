@@ -122,17 +122,23 @@
 # ---
 # name: test_subcommand_help_renders[sync][sync]
   '''
-  usage: et sync [-h] [-y]
+  usage: et sync [-h] [-y] [--global] [--limit LIMIT]
   
   Read recent memories from every detected provider, filter, extract concepts via Haiku, write them into the knowledge graph.
   
   options:
-    -h, --help  show this help message and exit
-    -y, --yes   skip the source-confirmation prompt
+    -h, --help     show this help message and exit
+    -y, --yes      skip the source-confirmation prompt
+    --global       force a full global sync even when cwd is inside a tracked
+                   project
+    --limit LIMIT  max chunks to pull this run (default 100)
   
   examples:
     et sync                   interactive (asks before pulling)
     et sync -y                non-interactive (use in scripts / cron)
+    cd ~/Projects/foo && et sync   scope to project foo only
+    et sync --global          full sync even when cwd is inside a project
+    et sync --limit 500       bulk catch-up after adding many projects
   
   '''
 # ---

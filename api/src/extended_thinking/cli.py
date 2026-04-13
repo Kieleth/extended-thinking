@@ -735,30 +735,60 @@ def _describe_provider_path(p) -> str:
     return "(configured)"
 
 
-def cmd_sync(yes: bool = False) -> int:
+def cmd_sync(yes: bool = False, scope_global: bool = False,
+             limit: int = 100) -> int:
     pipeline = _get_pipeline()
-
-    provider = pipeline.provider if hasattr(pipeline, "provider") else None
-    provider_name = getattr(provider, "name", "?") if provider else "?"
-
-    print(style.header("sync", right=provider_name))
-    print()
+    just_added_projects = False
 
     # Cwd-aware: if ET isn't already tracking the current directory and
     # there are git projects under it, offer to add them. Rebuilds the
     # pipeline so the new projects show up in the source picker below.
-    if not yes:
+    if not yes and not scope_global:
         if _maybe_prompt_cwd_projects():
             pipeline.store.close()
             _reload_settings()
             pipeline = _get_pipeline()
+            just_added_projects = True
+
+    # Cwd-scoped sync: when we're inside a tracked project (and --global
+    # wasn't passed), swap AutoProvider for a ProjectsProvider scoped to
+    # just that project. The global sync does everything; the scoped one
+    # is "I'm working on Claro, show me Claro's world."
+    scoped_project = (
+        None if scope_global else _cwd_tracked_project()
+    )
+    if scoped_project is not None:
+        pipeline.store.close()
+        pipeline = _build_project_scoped_pipeline(scoped_project)
+
+    provider = pipeline.provider if hasattr(pipeline, "provider") else None
+    provider_name = getattr(provider, "name", "?") if provider else "?"
+
+    header_right = (
+        f"project {scoped_project.name}"
+        if scoped_project is not None
+        else provider_name
+    )
+    print(style.header("sync", right=header_right))
+    print()
+
+    # When the user just opted into N new projects, bump the limit for
+    # this sync so we actually reach them on the first round instead of
+    # spreading 25 chunks across 4 providers.
+    if just_added_projects and limit <= 100:
+        limit = 500
 
     # Pre-flight: show what we're about to ingest from, confirm.
-    if not _confirm_sources(pipeline, assume_yes=yes):
-        print(style.hint("  cancelled."))
-        return 0
+    if scoped_project is None:
+        if not _confirm_sources(pipeline, assume_yes=yes):
+            print(style.hint("  cancelled."))
+            return 0
+    else:
+        print(f"  {style.dim('scope')}  {scoped_project.name}   "
+              f"{style.dim(str(scoped_project).replace(str(Path.home()), '~'))}")
+        print()
 
-    result, total_time = asyncio.run(_run_sync_with_reporter(pipeline))
+    result, total_time = asyncio.run(_run_sync_with_reporter(pipeline, limit=limit))
     total = pipeline.store.get_stats()["total_concepts"]
 
     delta = result["concepts_extracted"]
@@ -803,7 +833,7 @@ def _sync_mood(delta: int, enrichment: dict | None) -> str:
     return style.mascot("narrow", "burn", glowing=True) + f"  {style.dim('big haul. phoning home.')}"
 
 
-async def _run_sync_with_reporter(pipeline):
+async def _run_sync_with_reporter(pipeline, *, limit: int = 100):
     """Run sync() with the live spinner reporter in parallel.
 
     Before sync starts, plays a brief one-time wake_up() animation
@@ -816,7 +846,7 @@ async def _run_sync_with_reporter(pipeline):
     spin_task = asyncio.create_task(reporter.spin())
     try:
         await reporter.wake_up()
-        result = await pipeline.sync(on_progress=reporter)
+        result = await pipeline.sync(limit=limit, on_progress=reporter)
     finally:
         reporter.finish()
         spin_task.cancel()
@@ -826,6 +856,63 @@ async def _run_sync_with_reporter(pipeline):
         with contextlib.suppress(asyncio.CancelledError):
             await spin_task
     return result, reporter.total()
+
+
+def _cwd_tracked_project() -> Path | None:
+    """If cwd is inside a git project ET is already tracking, return
+    that project's root. Otherwise None.
+
+    Walks up from cwd looking for a `.git` directory, then checks
+    whether that root is in settings.providers.projects.roots.
+    """
+    from extended_thinking.config import settings
+    try:
+        cwd = Path.cwd().resolve()
+    except OSError:
+        return None
+
+    # Walk up looking for the nearest .git ancestor.
+    current = cwd
+    project_root: Path | None = None
+    while current != current.parent:
+        if (current / ".git").is_dir():
+            project_root = current
+            break
+        current = current.parent
+
+    if project_root is None:
+        return None
+
+    # Is this project tracked?
+    tracked = {
+        Path(p).expanduser().resolve()
+        for p in settings.providers.projects.roots
+    }
+    return project_root if project_root in tracked else None
+
+
+def _build_project_scoped_pipeline(project_root: Path):
+    """Construct a Pipeline wired to a single-project ProjectsProvider
+    for `et sync` / `et insight` running inside a tracked project.
+
+    Reuses the existing data dir so concepts land in the same graph
+    under the project's `memory:project:<name>` namespace — no second
+    store, no divergence from the global view.
+    """
+    from extended_thinking.config import migrate_data_dir, settings
+    from extended_thinking.processing.pipeline_v2 import Pipeline
+    from extended_thinking.providers.projects import ProjectsProvider
+    from extended_thinking.storage import StorageLayer
+
+    data_dir = migrate_data_dir(settings)
+    storage = StorageLayer.default(data_dir)
+    provider = ProjectsProvider(
+        roots=[project_root],
+        patterns=list(settings.providers.projects.patterns),
+        require_git=True,
+        max_files_per_project=settings.providers.projects.max_files_per_project,
+    )
+    return Pipeline.from_storage(provider, storage)
 
 
 def cmd_stats() -> int:
@@ -1114,12 +1201,19 @@ def _build_parser() -> argparse.ArgumentParser:
         epilog=(
             "examples:\n"
             "  et sync                   interactive (asks before pulling)\n"
-            "  et sync -y                non-interactive (use in scripts / cron)"
+            "  et sync -y                non-interactive (use in scripts / cron)\n"
+            "  cd ~/Projects/foo && et sync   scope to project foo only\n"
+            "  et sync --global          full sync even when cwd is inside a project\n"
+            "  et sync --limit 500       bulk catch-up after adding many projects"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p_sync.add_argument("-y", "--yes", action="store_true",
                         help="skip the source-confirmation prompt")
+    p_sync.add_argument("--global", dest="scope_global", action="store_true",
+                        help="force a full global sync even when cwd is inside a tracked project")
+    p_sync.add_argument("--limit", type=int, default=100,
+                        help="max chunks to pull this run (default 100)")
 
     sub.add_parser(
         "stats",
@@ -1253,7 +1347,11 @@ def _dispatch(args) -> int:
     if args.cmd == "concepts":
         return cmd_concepts(limit=args.limit)
     if args.cmd == "sync":
-        return cmd_sync(yes=args.yes)
+        return cmd_sync(
+            yes=args.yes,
+            scope_global=getattr(args, "scope_global", False),
+            limit=getattr(args, "limit", 100),
+        )
     if args.cmd == "stats":
         return cmd_stats()
     if args.cmd == "init":
