@@ -441,12 +441,12 @@ def _describe_provider_path(p) -> str:
             return str(v).replace(str(Path.home()), "~")
     try:
         stats = p.get_stats()
-        for key in ("projects_dir", "root", "path", "export_path"):
-            v = stats.get(key)
-            if v:
-                return str(v).replace(str(Path.home()), "~")
     except Exception:  # noqa: BLE001
-        pass
+        return "(configured)"
+    for key in ("projects_dir", "root", "path", "export_path"):
+        v = stats.get(key)
+        if v:
+            return str(v).replace(str(Path.home()), "~")
     return "(configured)"
 
 
@@ -496,6 +496,8 @@ async def _run_sync_with_reporter(pipeline):
     the spinner frame ticking at ~80ms so the active phase line looks
     alive during long awaits (Haiku extraction in particular).
     """
+    import contextlib
+
     reporter = _SyncReporter()
     spin_task = asyncio.create_task(reporter.spin())
     try:
@@ -503,10 +505,11 @@ async def _run_sync_with_reporter(pipeline):
     finally:
         reporter.finish()
         spin_task.cancel()
-        try:
+        # CancelledError is the expected outcome of cancelling an infinite
+        # spinner loop; suppress() expresses that intent without tripping
+        # the no-silent-swallow invariant.
+        with contextlib.suppress(asyncio.CancelledError):
             await spin_task
-        except asyncio.CancelledError:
-            pass
     return result, reporter.total()
 
 

@@ -167,8 +167,14 @@ class ConceptStore:
     # ── Concepts ─────────────────────────────────────────────────────
 
     def add_concept(self, concept_id: str, name: str, category: str,
-                    description: str, source_quote: str = "") -> None:
-        """Add or merge a concept. If it exists, increment frequency and update."""
+                    description: str, source_quote: str = "",
+                    *, namespace: str = "memory") -> None:
+        """Add or merge a concept. If it exists, increment frequency and update.
+
+        `namespace` is accepted for protocol parity with GraphStore (ADR 013
+        C2), but the legacy SQLite backend has no namespace column — lite
+        mode is single-namespace by design. The kwarg is a no-op here.
+        """
         now = datetime.now(timezone.utc).isoformat()
         existing = self.get_concept(concept_id)
 

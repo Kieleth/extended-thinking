@@ -2,6 +2,12 @@
 
 The simplest possible provider. No dependencies beyond stdlib.
 Useful as a fallback and as the reference implementation for the protocol.
+
+ADR 013 C2: each FolderProvider instance carries a `namespace`. Chunks
+emitted by this provider get that namespace stamped in their metadata;
+`Pipeline.sync` reads it off the source chunk and uses it when writing
+concepts, so notes from `~/vault/notes` end up under `memory:notes`
+and stay isolated from notes under `~/writing` (`memory:writing`).
 """
 
 from __future__ import annotations
@@ -9,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -20,6 +27,21 @@ TEXT_EXTENSIONS = {".md", ".txt", ".markdown", ".rst", ".text"}
 INSIGHTS_DIR = "_insights"
 
 
+def namespace_for_root(root: Path) -> str:
+    """Derive a memory:<slug> namespace from a folder root.
+
+    `~/vault/notes`      → `memory:notes`
+    `~/My Writing`       → `memory:my-writing`
+    `~/Documents`        → `memory:documents`
+    `~` (empty basename) → `memory`
+
+    Lowercase, ASCII-safe, hyphen-separated. Stable across platforms.
+    """
+    basename = (root.name or "").lower()
+    slug = re.sub(r"[^a-z0-9_-]+", "-", basename).strip("-")
+    return f"memory:{slug}" if slug else "memory"
+
+
 class FolderProvider:
     """Memory provider that reads text files from a directory.
 
@@ -27,13 +49,20 @@ class FolderProvider:
     markdown files in a _insights/ subdirectory.
     """
 
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, *, namespace: str | None = None):
         self._root = Path(root)
         self._insights_dir = self._root / INSIGHTS_DIR
+        # Per-folder namespace: either explicit (from config) or derived
+        # from the folder's basename. Stamped on every emitted chunk.
+        self._namespace = namespace or namespace_for_root(self._root)
 
     @property
     def name(self) -> str:
         return "folder"
+
+    @property
+    def namespace(self) -> str:
+        return self._namespace
 
     def search(self, query: str, limit: int = 20) -> list[MemoryChunk]:
         """Case-insensitive substring search across all text files."""
@@ -139,5 +168,12 @@ class FolderProvider:
             content=content,
             source=str(path),
             timestamp=mtime,
-            metadata={"filename": path.name, "size_bytes": stat.st_size},
+            metadata={
+                "filename": path.name,
+                "size_bytes": stat.st_size,
+                # Namespace travels with the chunk so Pipeline.sync scopes
+                # the extracted concepts to the right folder-project.
+                "namespace": self._namespace,
+                "provider": "folder",
+            },
         )

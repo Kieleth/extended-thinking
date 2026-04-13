@@ -237,6 +237,8 @@ class AutoProvider:
                     logger.debug("MemPalaceProvider not available (missing chromadb?)")
 
         # Folders. Config paths first (explicit), then detected Documents/Notes.
+        # Each folder becomes its own namespace (memory:<basename>) so notes
+        # under ~/vault/notes stay isolated from writing under ~/writing.
         if pc.folder.enabled:
             from extended_thinking.providers.folder import FolderProvider
             for explicit_path in pc.folder.paths:
@@ -249,7 +251,9 @@ class AutoProvider:
                 folder = self._home / folder_name
                 if folder.exists() and (any(folder.glob("*.md")) or any(folder.glob("*.txt"))):
                     # Avoid double-adding if already configured explicitly
-                    if not any(isinstance(p, FolderProvider) and p._folder == folder
+                    # (previous check against `_folder` was a typo — the attr
+                    # is `_root`, so every run was double-adding silently).
+                    if not any(isinstance(p, FolderProvider) and p._root == folder
                                for p in self._providers):
                         self._providers.append(FolderProvider(folder))
                         logger.info("AutoProvider: detected folder %s", folder)

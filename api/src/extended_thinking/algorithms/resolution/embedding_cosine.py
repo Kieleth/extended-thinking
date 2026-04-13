@@ -76,7 +76,13 @@ class EmbeddingCosineResolution:
         if not hasattr(kg, "list_concepts"):
             return None
 
-        existing = kg.list_concepts(limit=1000)
+        # Scope by namespace (ADR 013 C2) so resolution only merges within
+        # the same folder-project; fall back unscoped for pre-013 stores.
+        ns = getattr(context, "namespace", None)
+        try:
+            existing = kg.list_concepts(limit=1000, namespace=ns)
+        except TypeError:
+            existing = kg.list_concepts(limit=1000)
         if not existing:
             return None
 

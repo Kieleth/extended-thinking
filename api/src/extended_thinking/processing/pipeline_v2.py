@@ -226,16 +226,45 @@ class Pipeline:
         new_count = 0
         concepts_seen = 0
         total_concepts = sum(len(bc) for _, bc in all_chunk_batches)
-        for batch_chunks, batch_concepts in all_chunk_batches:
-            # Resolve resolution plugins once per batch (cheap, reused across concepts)
-            resolution_algs = _get_resolution_algorithms(self._vectors is not None)
-            alg_ctx_base = _build_algorithm_context(self._store, self._vectors)
+        resolution_algs = _get_resolution_algorithms(self._vectors is not None)
 
+        for batch_chunks, batch_concepts in all_chunk_batches:
             for concept in batch_concepts:
-                concept_id = _normalize_id(concept.name)
+                # Match source_quote → chunk FIRST so we can derive this
+                # concept's namespace (ADR 013 C2). Lets us scope entity
+                # resolution and the concept row itself.
+                source_chunk = None
+                quote = concept.source_quote.strip()
+                if quote:
+                    for chunk in batch_chunks:
+                        if quote[:80] in chunk.content:
+                            source_chunk = chunk
+                            break
+                if source_chunk is None and batch_chunks:
+                    source_chunk = batch_chunks[0]
+
+                namespace = "memory"
+                if source_chunk and source_chunk.metadata:
+                    namespace = source_chunk.metadata.get("namespace") or "memory"
+
+                # Scope concept_id by namespace so same-name concepts in
+                # different folder-projects stay as distinct graph rows.
+                # Default namespace ("memory") keeps bare ids for
+                # backwards compat with pre-013 data.
+                base_id = _normalize_id(concept.name)
+                if namespace == "memory":
+                    concept_id = base_id
+                else:
+                    concept_id = f"{namespace}:{base_id}"
+
+                # Namespace-scoped resolution context so we only merge
+                # with concepts from the same folder-project.
+                alg_ctx = _build_algorithm_context(
+                    self._store, self._vectors, namespace=namespace,
+                )
 
                 # Entity resolution: try each active plugin, first match wins
-                similar = _try_resolve(resolution_algs, alg_ctx_base,
+                similar = _try_resolve(resolution_algs, alg_ctx,
                                        concept.name, concept.description)
                 if similar and similar["id"] != concept_id:
                     logger.info("Entity resolution [%s]: '%s' merged into '%s'",
@@ -250,6 +279,7 @@ class Pipeline:
                         category=concept.category,
                         description=concept.description,
                         source_quote=concept.source_quote,
+                        namespace=namespace,
                     )
                     new_count += 1
 
@@ -272,25 +302,17 @@ class Pipeline:
                                 ):
                                     supersession_count += 1
 
-                # Record provenance: match source_quote to the chunk in THIS batch
-                source_chunk = None
-                quote = concept.source_quote.strip()
-                if quote:
-                    for chunk in batch_chunks:
-                        if quote[:80] in chunk.content:
-                            source_chunk = chunk
-                            break
-                if source_chunk is None and batch_chunks:
-                    source_chunk = batch_chunks[0]
-
-                self._store.add_provenance(
-                    entity_id=concept_id,
-                    source_provider=self._provider.name,
-                    source_chunk_id=source_chunk.id,
-                    llm_model="haiku",
-                    source=source_chunk.source or "",
-                    source_type=_infer_source_type(source_chunk),
-                )
+                # Provenance: uses the source_chunk we already matched
+                # above to derive the namespace; no second pass needed.
+                if source_chunk is not None:
+                    self._store.add_provenance(
+                        entity_id=concept_id,
+                        source_provider=self._provider.name,
+                        source_chunk_id=source_chunk.id,
+                        llm_model="haiku",
+                        source=source_chunk.source or "",
+                        source_type=_infer_source_type(source_chunk),
+                    )
                 concepts_seen += 1
                 if total_concepts and (concepts_seen % 5 == 0 or concepts_seen == total_concepts):
                     _tick("resolve", f"{concepts_seen}/{total_concepts}")
@@ -766,9 +788,9 @@ def _get_resolution_algorithms(has_vectors: bool) -> list:
     return algs
 
 
-def _build_algorithm_context(kg, vectors):
+def _build_algorithm_context(kg, vectors, *, namespace: str | None = None):
     from extended_thinking.algorithms import AlgorithmContext
-    return AlgorithmContext(kg=kg, vectors=vectors)
+    return AlgorithmContext(kg=kg, vectors=vectors, namespace=namespace)
 
 
 def _try_resolve(algorithms: list, context, query_name: str,

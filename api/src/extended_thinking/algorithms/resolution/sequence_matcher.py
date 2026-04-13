@@ -70,7 +70,16 @@ class SequenceMatcherResolution:
         best_match = None
         best_score = 0.0
 
-        for c in kg.list_concepts(limit=1000):
+        # Scope by namespace so `kuzu` in memory:notes doesn't merge with
+        # `kuzu` in memory:writing. list_concepts accepts namespace= per
+        # ADR 013 C2; fall back to unscoped if the store predates it.
+        ns = getattr(context, "namespace", None)
+        try:
+            candidates = kg.list_concepts(limit=1000, namespace=ns)
+        except TypeError:
+            candidates = kg.list_concepts(limit=1000)
+
+        for c in candidates:
             if norm_id == c["id"]:
                 return c  # exact ID match (already normalized)
             existing = c["name"].lower().strip()

@@ -344,8 +344,17 @@ class GraphStore:
     # ── Concepts ─────────────────────────────────────────────────────
 
     def add_concept(self, concept_id: str, name: str, category: str,
-                    description: str, source_quote: str = "") -> None:
-        """Add or merge a concept. If exists, increment frequency."""
+                    description: str, source_quote: str = "",
+                    *, namespace: str = "memory") -> None:
+        """Add or merge a concept. If exists, increment frequency.
+
+        `namespace` (ADR 013 C2) stamps the concept's tenancy column.
+        Per-folder / per-project callers pass e.g. `"memory:notes"` to
+        keep concepts isolated. Caller is responsible for scoping
+        concept_id so same-name concepts in different namespaces don't
+        collide at the Kuzu primary-key level (Pipeline.sync prefixes
+        the id with the namespace for non-default namespaces).
+        """
         now = datetime.now(timezone.utc).isoformat()
         existing = self.get_concept(concept_id)
 
@@ -379,7 +388,7 @@ class GraphStore:
                     "dsc": description, "quote": source_quote, "freq": 1,
                     "now": now, "empty": "", "status": "",
                     "tags": "", "cid": "", "ac": 0, "la": "",
-                    "ns": "memory", "src": "", "vp": True,
+                    "ns": namespace, "src": "", "vp": True,
                 },
             )
 
