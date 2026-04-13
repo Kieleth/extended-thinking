@@ -4,6 +4,15 @@ Semantic-ish versioning. Pre-1.0 means the API can change between minor versions
 
 ## [Unreleased]
 
+### Fixed (CRITICAL — data-loss class)
+- **R11: explicit close() contract on GraphStore + duplicate-handle guard.** Kuzu's Python API has no `Database.close()`; file handles release only when `__del__` runs. Two `GraphStore` instances on the same path produce two live Kuzu Database handles whose page-allocation views diverge → file corruption on write. Root cause of the 2026-04-12 autoresearch-ET seek-to-5.8-TB incident. Fix layered as:
+  - `GraphStore.close()` drops the `_conn` + `_db` references and forces `gc.collect()` so Kuzu's `__del__` runs deterministically before the call returns. Idempotent.
+  - `GraphStore.__enter__` / `__exit__` — context-manager form (`with GraphStore(...) as kg:`).
+  - **Process-wide single-instance registry** keyed by resolved absolute path. Constructing a second `GraphStore` on a path that's already open raises `DuplicateGraphStoreError` with a clear remediation message. Reopen-after-close is fine; the registry uses `weakref` so a forgotten-but-GC'd instance doesn't false-block.
+  - `StorageLayer.close()` cascades to the underlying KG.
+  - The HTTP route's `_get_graph_store()` is now a process-wide cached singleton per resolved path — concurrent FastAPI requests share one `GraphStore` instead of constructing one each. FastAPI lifespan calls `close_graph_stores()` on shutdown.
+  - Acceptance test: `tests/acceptance/test_graph_store_lifetime.py` (12 cases) — close idempotency, registry cleanup, double-open rejection, path-resolution collisions, context-manager semantics, StorageLayer cascade, route singleton.
+
 ### Fixed (BREAKING — wheel-shape)
 - **PyPI wheel now ships the generated schema artifacts.** v0.1.0 / v0.1.1 / v0.1.2 on PyPI were broken — `[tool.setuptools.packages.find] where = ["src"]` did not include the repo-root `schema/generated/` directory, so any `GraphStore()` construction crashed with `ModuleNotFoundError: No module named 'schema'` on installed wheels. Generated files moved to `api/src/extended_thinking/_schema/` so they live inside the package. All 28 `from schema.generated import …` call sites rewritten to `from extended_thinking._schema import …`. Codegen scripts (`scripts/gen_kuzu.py`, `scripts/gen_kuzu_types.py`) output to the new path; Makefile + `make schema-check` drift guard updated accordingly. The repo-root `schema/` directory now holds only the LinkML source (`extended_thinking.yaml`) and the malleus symlink — the codegen *inputs*, not the outputs.
 - **CI packaging smoke test.** New step in `.github/workflows/release.yml` installs the freshly-built wheel into a venv *outside* the checkout and exercises the exact path that crashed on 0.1.0: import `_schema.*`, construct a `GraphStore(ontology=default_ontology())`, run `et --help`. Runs between `twine check` and the PyPI publish job — a broken wheel now fails the release before it can upload.

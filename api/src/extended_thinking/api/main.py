@@ -11,8 +11,17 @@ from extended_thinking.config import settings
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """No-op lifespan. Kuzu / Chroma stores are lazily initialized per request."""
-    yield
+    """Application lifespan.
+
+    Stores are lazily initialized per resolved data path (process-wide
+    singleton — see graph_v2._get_graph_store). On shutdown we close
+    every cached GraphStore so the Kuzu file handles release
+    deterministically before the process exits (R11).
+    """
+    try:
+        yield
+    finally:
+        graph_v2.close_graph_stores()
 
 
 app = FastAPI(

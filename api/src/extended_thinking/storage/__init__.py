@@ -64,3 +64,21 @@ class StorageLayer:
         """Create StorageLayer with legacy SQLite ConceptStore (for migration/tests)."""
         data_dir.mkdir(parents=True, exist_ok=True)
         return cls(vectors=None, kg=ConceptStore(data_dir / "concepts.db"))
+
+    # ── Lifetime (R11) ───────────────────────────────────────────────
+
+    def close(self) -> None:
+        """Close the underlying KG (and any other ressources). Cascades
+        to GraphStore.close() so the Kuzu Database handle releases
+        deterministically. Idempotent."""
+        kg = getattr(self, "kg", None)
+        if kg is not None and hasattr(kg, "close"):
+            kg.close()
+        # ConceptStore (SQLite) auto-closes via __del__; Vector stores
+        # also handle their own teardown. Nothing else to do here.
+
+    def __enter__(self) -> "StorageLayer":
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.close()

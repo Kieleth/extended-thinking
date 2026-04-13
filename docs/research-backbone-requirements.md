@@ -92,18 +92,21 @@ Extend `project-invariants.md` or open ADR-013 to formalize ET as a first-class 
 
 Without this, consumers guess. With this, they build against a stable contract.
 
-### R11. Explicit close contract on GraphStore
+### R11. Explicit close contract on GraphStore — **shipped**
 
 **What.** `GraphStore.close()` — fully dispose the underlying Kuzu `Database` (not just any open Connection), releasing the OS file handle before the method returns. Ideally: also expose a context-manager form (`with GraphStore(...) as kg:`) so callers never hold a live handle past scope.
 
 **Why it generalizes.** Kuzu's Python API has no explicit `Database.close()`; file handles release only when `__del__` runs. Any consumer that opens, uses, then re-opens the same DB inside one process has to trust garbage collection timing. Without a proper close(), a consumer that instantiates two GraphStore objects on the same file (a common mistake: pipeline stage A + stage B) ends up with two live Kuzu Database handles simultaneously, whose page-allocation views diverge, corrupting the file on write. This was the root cause of the 2026-04-12 autoresearch-et incident (seek-to-5.8-TB corruption). autoresearch-et added a belt-and-suspenders single-instance guard, but the underlying contract gap lives in ET.
 
-**Minimal shape:**
-- `GraphStore.close()` — drop any cached references, force `gc.collect()` if needed so Kuzu Database's `__del__` runs.
-- `GraphStore.__enter__` / `__exit__` — context manager wrapping close().
-- (Stretch) detect same-file reopen-while-open and raise a clear error instead of producing a second handle.
+**Implemented (2026-04-12):**
+- `GraphStore.close()` — drops `_conn` + `_db` references and forces `gc.collect()` so Kuzu's `__del__` runs deterministically before the call returns. Idempotent.
+- `GraphStore.__enter__` / `__exit__` — context-manager form.
+- **Process-wide single-instance registry** keyed by resolved absolute path. Constructing a second `GraphStore` on a path that's already open raises `DuplicateGraphStoreError` with a clear message pointing at `close()`. Reopen-after-close is fine. Implemented as a `weakref` registry so a forgotten-but-GC'd instance doesn't false-block.
+- `StorageLayer.close()` cascades to the underlying KG.
+- The HTTP route's `_get_graph_store()` (api/routes/graph_v2.py) is now a process-wide cached singleton per resolved path — concurrent requests share one instance instead of constructing one each. FastAPI shutdown calls `close_graph_stores()` to release the file handles.
+- Acceptance test: `tests/acceptance/test_graph_store_lifetime.py` (12 cases) — covers close idempotency, registry cleanup, double-open rejection, path-resolution collisions, context-manager semantics, StorageLayer cascade, and route singleton behaviour.
 
-**Related schema-change hazard.** When the DDL changes (new node/edge types added to the LinkML) on a populated DB, `CREATE TABLE IF NOT EXISTS` runs the migration online. If a second handle is open at that moment, the migration can corrupt. ET should (a) document this as a known hazard, and (b) consider a `GraphStore.check_schema(expected_ontology)` that fails fast rather than silently migrating on an already-populated DB.
+**Related schema-change hazard (still open).** When the DDL changes (new node/edge types added to the LinkML) on a populated DB, `CREATE TABLE IF NOT EXISTS` runs the migration online. If a second handle is open at that moment, the migration can corrupt — this is the same multi-handle class as R11 above, and the duplicate-handle guard prevents the case in practice. A separate `GraphStore.check_schema(expected_ontology)` that fails fast on schema drift (rather than silently migrating an already-populated DB) is **not yet implemented** — file as a follow-up if the bitemporal-historical case calls for it.
 
 ## What is explicitly NOT required from ET
 

@@ -6,19 +6,99 @@ Same public API so callers don't break. Internals are Cypher queries.
 Kuzu is embedded (single directory, no server), like SQLite but for graphs.
 Supports: variable-length paths, pattern matching, property filters,
 undirected traversal, atomic updates, aggregations.
+
+Lifetime contract (R11). Kuzu's Python API has no explicit
+`Database.close()` — the file handle releases only when `__del__`
+runs, which means GC timing decides when the DB is actually closed.
+Two GraphStore instances on the same path produce two live Kuzu
+Database handles whose page-allocation views diverge → file
+corruption on write (the 2026-04-12 autoresearch-et incident).
+
+GraphStore therefore:
+  - exposes an explicit `close()` that drops the connection + db
+    references and forces `gc.collect()` so the file handle releases
+    deterministically before the call returns;
+  - implements `__enter__` / `__exit__` so callers can use a
+    `with GraphStore(...) as kg:` block;
+  - maintains a process-wide registry of live instances keyed by the
+    resolved absolute path. Constructing a second GraphStore on a path
+    that's already open raises `DuplicateGraphStoreError` with a clear
+    message pointing at `close()`. Reopen-after-close is fine.
 """
 
 from __future__ import annotations
 
+import gc
 import json
 import logging
+import threading
 import uuid
+import weakref
 from datetime import datetime, timezone
 from pathlib import Path
 
 import kuzu
 
 logger = logging.getLogger(__name__)
+
+
+# ── Process-wide single-instance registry (R11) ──────────────────────
+# Maps resolved absolute path str → live GraphStore weakref. A weakref
+# means we don't artificially keep instances alive if the user drops
+# their last reference without calling close() — but the constructor
+# still detects "you already have one, call close() first."
+
+_LIVE_STORES: dict[str, "weakref.ref[GraphStore]"] = {}
+_LIVE_STORES_LOCK = threading.Lock()
+
+
+class DuplicateGraphStoreError(RuntimeError):
+    """Raised when a second GraphStore is constructed on a path that
+    already has a live instance in this process.
+
+    Two live Kuzu Database handles on the same file produce divergent
+    page-allocation views and corrupt the file on write. Always close
+    the first instance (`kg.close()` or use the context-manager form)
+    before reopening.
+    """
+
+    def __init__(self, path: Path):
+        self.path = path
+        super().__init__(
+            f"GraphStore({path!s}) is already open in this process. "
+            "Holding two Kuzu Database handles on the same file produces "
+            "divergent page allocations and corrupts the file on write. "
+            "Call close() on the existing instance (or use a `with` block) "
+            "before opening a second one."
+        )
+
+
+def _register_live(path: Path, store: "GraphStore") -> str:
+    """Add a store to the registry. Returns the resolved-path key used.
+
+    Raises DuplicateGraphStoreError if an instance is already live on
+    the same resolved path. Stale weakrefs are pruned during the check
+    so a previously-GC'd-but-never-closed instance doesn't false-block.
+    """
+    key = str(Path(path).resolve())
+    with _LIVE_STORES_LOCK:
+        existing_ref = _LIVE_STORES.get(key)
+        if existing_ref is not None:
+            existing = existing_ref()
+            if existing is not None:
+                # A live GraphStore on this path already exists.
+                raise DuplicateGraphStoreError(Path(key))
+            # Stale weakref — referent was GC'd. Drop and proceed.
+            del _LIVE_STORES[key]
+        _LIVE_STORES[key] = weakref.ref(store)
+    return key
+
+
+def _unregister_live(key: str) -> None:
+    """Remove the path key from the live-instance registry. Safe to
+    call even if the key is missing (close() can be called twice)."""
+    with _LIVE_STORES_LOCK:
+        _LIVE_STORES.pop(key, None)
 
 
 class GraphStore:
@@ -34,6 +114,9 @@ class GraphStore:
     `t_created`, `t_expired` (transaction time), and
     `t_superseded_by` (pointer to the record that replaced this one).
     These are system columns injected by the codegen.
+
+    Lifetime: explicit close() required when the file will be
+    re-opened later in the same process (see module docstring R11).
     """
 
     def __init__(self, db_path: Path, ontology=None, vectors=None):
@@ -48,12 +131,64 @@ class GraphStore:
             Ontology,
             default_ontology,
         )
-        self._db_path = db_path
-        self._db = kuzu.Database(str(db_path))
-        self._conn = kuzu.Connection(self._db)
+        self._db_path = Path(db_path)
+        # Register BEFORE opening the Database so we never end up with
+        # two live kuzu handles on the same file even momentarily.
+        # Registration raises if a live instance exists on this path.
+        self._registry_key = _register_live(self._db_path, self)
+        try:
+            self._db = kuzu.Database(str(db_path))
+            self._conn = kuzu.Connection(self._db)
+        except Exception:
+            # If Kuzu fails to open, drop the registration so a retry
+            # on the same path doesn't false-trip the duplicate guard.
+            _unregister_live(self._registry_key)
+            raise
         self._ontology: Ontology = ontology or default_ontology()
         self._vectors = vectors
+        self._closed = False
         self._apply_ontology()
+
+    # ── Lifetime ──────────────────────────────────────────────────────
+
+    def close(self) -> None:
+        """Release the underlying Kuzu Database handle.
+
+        Drops the connection + db references and forces `gc.collect()`
+        so Kuzu's `__del__` runs deterministically. After close(), any
+        Cypher call will fail; the path is free to be reopened.
+        Idempotent — calling twice is a no-op.
+        """
+        if self._closed:
+            return
+        self._closed = True
+        # Order matters: connection holds a reference into the db;
+        # drop it first.
+        self._conn = None
+        self._db = None
+        # Force release of the Kuzu Database handle this process holds.
+        # Without gc.collect(), the OS file handle can linger past
+        # close() and a same-process reopen will still corrupt.
+        gc.collect()
+        _unregister_live(self._registry_key)
+
+    def __enter__(self) -> "GraphStore":
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.close()
+
+    def __del__(self):
+        # Best-effort safety net — if a caller forgets to close(),
+        # release the registry slot when GC finally runs so the path
+        # becomes reopenable. Don't rely on this; it's a fallback, not
+        # a contract.
+        try:
+            if not getattr(self, "_closed", True):
+                _unregister_live(getattr(self, "_registry_key", ""))
+        except Exception:  # noqa: BLE001
+            # __del__ must not raise.
+            return
 
     def _apply_ontology(self):
         """Apply every CREATE statement from the ontology. Idempotent via

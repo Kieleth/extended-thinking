@@ -106,14 +106,56 @@ def _resolve_class(type_name: str, expected: str):
     )
 
 
+# Process-wide GraphStore cache (R11). Two HTTP requests on the same
+# process must NOT each construct their own GraphStore on the same path
+# — that would produce two live Kuzu Database handles, divergent page
+# allocations, and corruption on write. Serve all requests off a single
+# lazily-initialised instance per resolved data path.
+#
+# Threading note: FastAPI runs route handlers in a threadpool by default;
+# the lock guards the lazy init. Kuzu's Connection itself is thread-safe
+# for reads + serial writes, so one shared Connection per path is fine.
+
+import threading as _threading
+from pathlib import Path as _Path
+
+_STORE_CACHE: dict[str, object] = {}
+_STORE_CACHE_LOCK = _threading.Lock()
+
+
 def _get_graph_store():
-    """Lazy GraphStore on settings.data.root. Reuses the same path the
-    memory pipeline uses so both audiences share the Kuzu database."""
+    """Process-wide singleton GraphStore on settings.data.root.
+
+    Reuses the same path the memory pipeline uses so both audiences
+    share the Kuzu database. Cached per resolved path; concurrent
+    requests on the same path see the same instance. R11 contract:
+    never construct two GraphStores on the same file in one process.
+    """
     from extended_thinking.config import migrate_data_dir, settings
     from extended_thinking.storage.graph_store import GraphStore
 
     data_dir = migrate_data_dir(settings)
-    return GraphStore(data_dir / "knowledge")
+    key = str(_Path(data_dir / "knowledge").resolve())
+    with _STORE_CACHE_LOCK:
+        cached = _STORE_CACHE.get(key)
+        if cached is not None:
+            return cached
+        store = GraphStore(data_dir / "knowledge")
+        _STORE_CACHE[key] = store
+        return store
+
+
+def close_graph_stores() -> None:
+    """Close every cached GraphStore. Wire to FastAPI shutdown so the
+    Kuzu file handles release deterministically when the process ends.
+    """
+    with _STORE_CACHE_LOCK:
+        for store in list(_STORE_CACHE.values()):
+            try:
+                store.close()
+            except Exception:  # noqa: BLE001
+                logger.exception("failed to close cached GraphStore")
+        _STORE_CACHE.clear()
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────
