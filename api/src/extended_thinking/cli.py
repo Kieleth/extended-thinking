@@ -127,9 +127,16 @@ def cmd_insight(force: bool = False) -> int:
     print()
     if wisdoms:
         print(_render_insight(wisdoms[0], concepts))
+        # Looked up, saw something, fingertip burned bright.
+        print()
+        print(style.signature("up", "burn", glowing=True,
+                              note="saw something. kept it."))
     else:
         title = insight.get("insight", {}).get("title", "no insight available")
         print(f"  {title}")
+        print()
+        print(style.signature("narrow", "rest",
+                              note="nothing new surfaced."))
     return 0
 
 
@@ -141,6 +148,15 @@ def cmd_concepts(limit: int = 20) -> int:
     print(style.header("concepts", right=f"top {len(concepts)}"))
     print()
     print(_render_concepts(concepts))
+    print()
+    if not concepts:
+        print(style.signature("blink", "rest", note="no concepts yet."))
+    elif len(concepts) < 5:
+        print(style.signature("open", "spark", glowing=True,
+                              note=f"{len(concepts)} in view."))
+    else:
+        print(style.signature("look_l", "lit", glowing=True,
+                              note=f"{len(concepts)} in view — scanning."))
     return 0
 
 
@@ -149,17 +165,17 @@ class _SyncReporter:
 
     One live ET sprite walks through the phases. Completed phases
     print above him as plain `· label detail 1.4s` rows; ET stays at
-    the bottom, his face and fingertip matching whatever phase is
-    currently active. When a phase ends, his line is overwritten with
-    the completion row (+ newline), and a fresh live line is drawn
-    below for the next phase.
+    the bottom as a single-line sprite, his face + fingertip matching
+    whatever phase is currently active. When a phase ends, his line is
+    overwritten with the completion row (+ newline) and a fresh sprite
+    appears below for the next phase.
 
         · reading provider          67 chunks                   1.8s
         · filtering content         67 thinking                 0.0s
         ◔‿◔ ╭●╮  extracting concepts     batch 2/4 · haiku      ← live ET
 
-    One ET, walking down the transcript. Unix semantics — piped
-    output skips ANSI and prints only the completion rows.
+    Unix semantics — piped output skips ANSI and prints only the
+    completion rows.
     """
 
     _LABELS = {
@@ -172,10 +188,10 @@ class _SyncReporter:
         "enrich":  "enriching with knowledge",
     }
 
-    # Each phase gets a face + brow that match what ET's doing.
-    # `extract` is the longest + most Haiku-heavy, so he narrows his
-    # eyes + furrows his brow. `enrich` reaches outward, so he looks up
-    # with raised brows. Other phases are left/right scanning.
+    # Each phase gets a face that matches what ET's doing. `extract`
+    # is the longest + most Haiku-heavy, so he narrows his eyes.
+    # `enrich` reaches outward, so he looks up. Other phases are the
+    # left/right scanning pattern.
     _PHASE_FACES = {
         "read":    "open",
         "filter":  "look_l",
@@ -184,15 +200,6 @@ class _SyncReporter:
         "resolve": "look_l",
         "relate":  "look_r",
         "enrich":  "up",
-    }
-    _PHASE_BROWS = {
-        "read":    "neutral",
-        "filter":  "raised",
-        "index":   "raised",
-        "extract": "furrow",
-        "resolve": "tilt",
-        "relate":  "tilt",
-        "enrich":  "arch",
     }
 
     # Fingertip pulse during a phase — travels up the intensity ladder
@@ -220,7 +227,6 @@ class _SyncReporter:
         self._active_detail: str = ""
         self._frame = 0
         self._tty = sys.stdout.isatty() and _os.environ.get("NO_COLOR") is None
-        self._sprite_drawn = False
         # Twitch state — counts frames since last twitch, picks a random
         # interval for the next one so it feels non-metronomic.
         self._twitch_counter = 0
@@ -267,49 +273,32 @@ class _SyncReporter:
     # ── Rendering ─────────────────────────────────────────────────────
 
     def _paint_spinner(self) -> None:
-        """Draw ET's two-line lollipop sprite.
+        """Draw ET's one-line sprite at the current cursor row (no newline).
 
-        Row 1 = brows + finger ball. Row 2 = eye face + stem + label +
-        detail. Persistent across ticks — we move cursor up 1, redraw
-        both rows, end cursor on row 2. First paint emits both rows
-        without the cursor-up dance.
+        \r returns to col 0; \033[K clears to EOL. Called on every
+        spinner tick. The sprite takes one line; no multi-row dance.
         """
         if self._active_phase is None or not self._tty:
             return
         phase_face = self._PHASE_FACES.get(self._active_phase, "open")
         face = self._twitch_face or phase_face
-        brow = self._PHASE_BROWS.get(self._active_phase, "neutral")
-        glow = self._GLOW_CYCLE[self._frame % len(self._GLOW_CYCLE)]
-        top, bottom = style.mascot_tall(face, brow, glow, glowing=True)
+        hand = self._GLOW_CYCLE[self._frame % len(self._GLOW_CYCLE)]
+        sprite = style.mascot(face, hand, glowing=True)
 
         label = self._LABELS.get(self._active_phase, self._active_phase)
         detail = self._active_detail or "…"
-        top_line = f"  {top}"
-        bottom_line = (
-            f"  {bottom}  "
+        line = (
+            f"  {sprite}  "
             f"{label:<{self._label_w + 2}}"
             f"{style.dim(detail)}"
         )
-
-        if self._sprite_drawn:
-            # Walk up to row 1, rewrite both rows, land on row 2.
-            sys.stdout.write("\033[1A\r\033[K")
-            sys.stdout.write(top_line)
-            sys.stdout.write("\n\r\033[K")
-            sys.stdout.write(bottom_line)
-        else:
-            # First paint of this phase — print both rows fresh.
-            sys.stdout.write(top_line)
-            sys.stdout.write("\n")
-            sys.stdout.write(bottom_line)
-            self._sprite_drawn = True
+        sys.stdout.write(f"\r{line}\033[K")
         sys.stdout.flush()
 
     def _finalize(self, detail: str) -> None:
-        """End the active phase. Collapse the two-line sprite into a
-        single `· label detail elapsed` completion row, then leave the
-        cursor on a fresh row for the next phase's sprite.
-        """
+        """End the active phase. Overwrite ET's live line with the
+        plain `· label detail elapsed` completion row, land cursor on
+        a fresh row for the next phase's sprite."""
         if self._active_phase is None:
             return
         now = self._time.monotonic()
@@ -322,30 +311,19 @@ class _SyncReporter:
             f"{style.dim(f'{elapsed:>5.1f}s')}"
         )
         if self._tty:
-            if self._sprite_drawn:
-                # Walk up to row 1, clear both rows, print completion in
-                # row 1's place, leave cursor on fresh row 2 for next sprite.
-                sys.stdout.write("\033[1A\r\033[K")
-                sys.stdout.write(completion)
-                sys.stdout.write("\n\r\033[K")
-            else:
-                sys.stdout.write(f"\r{completion}\033[K\n")
+            sys.stdout.write(f"\r{completion}\033[K\n")
             sys.stdout.flush()
         else:
             print(completion)
-        self._sprite_drawn = False
         self._active_phase = None
         self._active_detail = ""
 
     def finish(self) -> None:
-        """Called once sync() returns. Clears any trailing two-line sprite."""
-        if self._tty and self._sprite_drawn:
-            # Walk up, clear row 1, clear row 2, leave cursor on fresh line.
-            sys.stdout.write("\033[1A\r\033[K")
-            sys.stdout.write("\n\r\033[K")
+        """Called once sync() returns. Clears any trailing sprite line."""
+        if self._tty and self._active_phase is not None:
+            sys.stdout.write("\r\033[K")
             sys.stdout.flush()
         self._active_phase = None
-        self._sprite_drawn = False
 
     def total(self) -> float:
         return self._time.monotonic() - self._t_start
@@ -639,7 +617,25 @@ def cmd_stats() -> int:
          ("wisdoms", f"{c['total_wisdoms']:,}")],
     ]
     print(style.grid(grid_rows))
+    print()
+    print(_stats_signature(c, p))
     return 0
+
+
+def _stats_signature(c: dict, p: dict) -> str:
+    """ET reacts to the graph's volume. Empty = sleepy. Small = curious.
+    Dense = focused + lit. Huge = wide eyes, finger burning."""
+    total = c.get("total_concepts", 0)
+    if total == 0:
+        return style.signature("blink", "rest", note="no concepts yet. run et sync.")
+    if total < 10:
+        return style.signature("open", "spark", glowing=True,
+                               note="getting started.")
+    if total < 100:
+        return style.signature("open", "lit", glowing=True,
+                               note="graph is humming.")
+    return style.signature("narrow", "burn", glowing=True,
+                           note="rich graph. long memory.")
 
 
 def cmd_mcp_serve() -> int:
@@ -811,6 +807,9 @@ def cmd_init(dry_run: bool = False) -> int:
     print(style.hint("  restart the client to pick up the new MCP server"))
     if dry_run:
         print(style.hint("  (dry-run: no files were modified)"))
+    print()
+    # Welcoming signature — ET waves, finger relaxed.
+    print(style.signature("open", "rest", note="ready when you are."))
     return 0
 
 

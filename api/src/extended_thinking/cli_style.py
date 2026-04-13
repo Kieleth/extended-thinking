@@ -109,63 +109,29 @@ HANDS = {
 }
 
 
-# ── Two-line lollipop sprite ─────────────────────────────────────────
-# For live spinners (et sync), the face goes two rows tall: eyebrows +
-# finger-ball on top, eyes + finger-stem below. Brows animate per phase;
-# the fingertip is a lollipop ball whose size = current glow intensity.
-#
-#   Line 1:   ⌒ ⌒   ●         (brow pair + glow ball)
-#   Line 2:   ◉‿◉   │         (eye face + stem)
-#
-# Columns: brow/face at 0-2, gap at 3-5, finger at col 6.
+# ── Mood signature ───────────────────────────────────────────────────
+# One-line ET sprite appended to command output. Reactive — each caller
+# picks a (face, hand, note) that matches what just happened.
 
-BROWS = {
-    "neutral": "‾ ‾",    # flat overline — relaxed
-    "raised":  "⌒ ⌒",    # curious arcs
-    "arch":    "╭ ╮",    # surprised curls
-    "furrow":  "^ ^",    # focused carets (ASCII — stays 1-cell wide)
-    "tilt":    "ˇ ˇ",    # thinking hačeks
-    "flat":    "~ ~",    # annoyed tildes (ASCII — stays 1-cell wide)
-}
-
-STEM = "│"
-
-# Top-of-lollipop glow characters (match HANDS intensity ladder).
-GLOW_BALL = {
-    "spark": "·",
-    "small": "•",
-    "lit":   "●",
-    "burn":  "⦿",
-}
-
-
-def mascot_tall(
+def signature(
     face: str = "open",
-    brow: str = "neutral",
-    glow: str = "spark",
+    hand: str = "rest",
     *,
     glowing: bool = False,
-) -> tuple[str, str]:
-    """Compose a two-line lollipop sprite. Returns (top_row, bottom_row).
+    note: str = "",
+) -> str:
+    """Render a one-line ET signature for end-of-command moods.
 
-    top_row:    eyebrows + 3-space gap + finger-ball glyph
-    bottom_row: eye face + 3-space gap + finger stem
+        ◉‿◉ ╭●╮  signal received.
 
-    Rows align at column 6 so the ball sits directly above the stem.
-    Top row is always short (no label); callers concatenate the bottom
-    row with their label + detail strings.
+    Caller is responsible for the newlines around it. Returns a string
+    starting with two leading spaces to align under the command's
+    header + rule indent.
     """
-    f = FACES.get(face, FACES["open"])
-    b = BROWS.get(brow, BROWS["neutral"])
-    ball = GLOW_BALL.get(glow, "·")
-
-    ball_colored = red_tone(ball) if glowing else dim(ball)
-    stem_colored = red_tone(STEM) if glowing else dim(STEM)
-
-    # Three spaces between face/brow (3 cells wide) and the finger (1 cell).
-    top = f"{dim(b)}   {ball_colored}"
-    bottom = f"{f}   {stem_colored}"
-    return top, bottom
+    sprite = mascot(face, hand, glowing=glowing)
+    if note:
+        return f"  {sprite}  {dim(note)}"
+    return f"  {sprite}"
 
 
 def mascot(face: str = "open", hand: str = "rest", *, glowing: bool = False) -> str:
