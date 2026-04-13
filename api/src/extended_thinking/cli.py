@@ -172,10 +172,10 @@ class _SyncReporter:
         "enrich":  "enriching with knowledge",
     }
 
-    # Each phase gets a face that matches what ET's doing. `extract` is
-    # the longest + most Haiku-heavy, so ET narrows his eyes in focus.
-    # `enrich` reaches outward, so ET looks up. Other phases are the
-    # left/right scanning pattern.
+    # Each phase gets a face + brow that match what ET's doing.
+    # `extract` is the longest + most Haiku-heavy, so he narrows his
+    # eyes + furrows his brow. `enrich` reaches outward, so he looks up
+    # with raised brows. Other phases are left/right scanning.
     _PHASE_FACES = {
         "read":    "open",
         "filter":  "look_l",
@@ -185,14 +185,33 @@ class _SyncReporter:
         "relate":  "look_r",
         "enrich":  "up",
     }
+    _PHASE_BROWS = {
+        "read":    "neutral",
+        "filter":  "raised",
+        "index":   "raised",
+        "extract": "furrow",
+        "resolve": "tilt",
+        "relate":  "tilt",
+        "enrich":  "arch",
+    }
 
     # Fingertip pulse during a phase — travels up the intensity ladder
-    # and back. The lit/burn frames carry red; the whole loop is the
-    # spinner replacement.
+    # and back. The lit/burn frames carry the orange-red glow.
     _GLOW_CYCLE = ["spark", "small", "lit", "burn", "lit", "small"]
 
+    # Twitch faces — micro-animations that briefly override the phase
+    # face to make ET feel alive. Blinks weighted highest because a
+    # living creature blinks more often than it winks or scans.
+    _TWITCH_CHOICES = [
+        "blink", "blink", "blink",    # 3x weight
+        "wink_l", "wink_r",
+        "look_l", "look_r",
+    ]
+
     def __init__(self):
+        import random
         import time
+        self._random = random
         self._time = time
         self._t_start = time.monotonic()
         self._t_phase = self._t_start
@@ -201,7 +220,12 @@ class _SyncReporter:
         self._active_detail: str = ""
         self._frame = 0
         self._tty = sys.stdout.isatty() and _os.environ.get("NO_COLOR") is None
-        self._last_paint_len = 0
+        self._sprite_drawn = False
+        # Twitch state — counts frames since last twitch, picks a random
+        # interval for the next one so it feels non-metronomic.
+        self._twitch_counter = 0
+        self._twitch_every = random.randint(8, 14)
+        self._twitch_face: str | None = None
 
     # ── Event callback ────────────────────────────────────────────────
 
@@ -224,69 +248,104 @@ class _SyncReporter:
     # ── Spinner loop (called by a background asyncio task) ────────────
 
     async def spin(self):
+        """Tick ~180ms (slower, breathing). On each tick, advance the
+        glow frame, possibly trigger a one-frame face twitch, redraw."""
         import asyncio
         while True:
-            await asyncio.sleep(0.08)
+            await asyncio.sleep(0.18)
             self._frame += 1
+            self._twitch_counter += 1
+            if self._twitch_counter >= self._twitch_every:
+                self._twitch_face = self._random.choice(self._TWITCH_CHOICES)
+                self._twitch_counter = 0
+                self._twitch_every = self._random.randint(8, 14)
+            else:
+                self._twitch_face = None
             if self._active_phase is not None:
                 self._paint_spinner()
 
     # ── Rendering ─────────────────────────────────────────────────────
 
     def _paint_spinner(self) -> None:
-        """Draw ET's live line at the current cursor row (no newline).
+        """Draw ET's two-line lollipop sprite.
 
-        This is the sprite that animates in place. Called at every
-        spinner tick and on every event that might change the active
-        phase or its detail. The line is always one row tall; \r +
-        clear-to-EOL handles the redraw.
+        Row 1 = brows + finger ball. Row 2 = eye face + stem + label +
+        detail. Persistent across ticks — we move cursor up 1, redraw
+        both rows, end cursor on row 2. First paint emits both rows
+        without the cursor-up dance.
         """
         if self._active_phase is None or not self._tty:
             return
+        phase_face = self._PHASE_FACES.get(self._active_phase, "open")
+        face = self._twitch_face or phase_face
+        brow = self._PHASE_BROWS.get(self._active_phase, "neutral")
+        glow = self._GLOW_CYCLE[self._frame % len(self._GLOW_CYCLE)]
+        top, bottom = style.mascot_tall(face, brow, glow, glowing=True)
+
         label = self._LABELS.get(self._active_phase, self._active_phase)
-        face = self._PHASE_FACES.get(self._active_phase, "open")
-        hand = self._GLOW_CYCLE[self._frame % len(self._GLOW_CYCLE)]
-        sprite = style.mascot(face, hand, glowing=True)
         detail = self._active_detail or "…"
-        line = (
-            f"  {sprite}  "
+        top_line = f"  {top}"
+        bottom_line = (
+            f"  {bottom}  "
             f"{label:<{self._label_w + 2}}"
             f"{style.dim(detail)}"
         )
-        sys.stdout.write(f"\r{line}\033[K")
+
+        if self._sprite_drawn:
+            # Walk up to row 1, rewrite both rows, land on row 2.
+            sys.stdout.write("\033[1A\r\033[K")
+            sys.stdout.write(top_line)
+            sys.stdout.write("\n\r\033[K")
+            sys.stdout.write(bottom_line)
+        else:
+            # First paint of this phase — print both rows fresh.
+            sys.stdout.write(top_line)
+            sys.stdout.write("\n")
+            sys.stdout.write(bottom_line)
+            self._sprite_drawn = True
         sys.stdout.flush()
 
     def _finalize(self, detail: str) -> None:
-        """End the active phase. Overwrite ET's live line with a
-        plain `· label detail elapsed` completion row followed by a
-        newline, so ET's next appearance renders below it."""
+        """End the active phase. Collapse the two-line sprite into a
+        single `· label detail elapsed` completion row, then leave the
+        cursor on a fresh row for the next phase's sprite.
+        """
         if self._active_phase is None:
             return
         now = self._time.monotonic()
         elapsed = now - self._t_phase
         label = self._LABELS.get(self._active_phase, self._active_phase)
-        line = (
+        completion = (
             f"  {style.dim('·')}  "
             f"{label:<{self._label_w + 2}}"
             f"{detail:<42}"
             f"{style.dim(f'{elapsed:>5.1f}s')}"
         )
         if self._tty:
-            # \r + clear the live ET line, print the completion + \n —
-            # cursor lands on a fresh row ready for the next phase's ET.
-            sys.stdout.write(f"\r{line}\033[K\n")
+            if self._sprite_drawn:
+                # Walk up to row 1, clear both rows, print completion in
+                # row 1's place, leave cursor on fresh row 2 for next sprite.
+                sys.stdout.write("\033[1A\r\033[K")
+                sys.stdout.write(completion)
+                sys.stdout.write("\n\r\033[K")
+            else:
+                sys.stdout.write(f"\r{completion}\033[K\n")
             sys.stdout.flush()
         else:
-            print(line)
+            print(completion)
+        self._sprite_drawn = False
         self._active_phase = None
         self._active_detail = ""
 
     def finish(self) -> None:
-        """Called once sync() returns. Clears any trailing spinner."""
-        if self._tty and self._active_phase is not None:
-            sys.stdout.write("\r\033[K")
+        """Called once sync() returns. Clears any trailing two-line sprite."""
+        if self._tty and self._sprite_drawn:
+            # Walk up, clear row 1, clear row 2, leave cursor on fresh line.
+            sys.stdout.write("\033[1A\r\033[K")
+            sys.stdout.write("\n\r\033[K")
             sys.stdout.flush()
         self._active_phase = None
+        self._sprite_drawn = False
 
     def total(self) -> float:
         return self._time.monotonic() - self._t_start

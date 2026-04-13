@@ -97,9 +97,9 @@ FACES = {
     "up":      "◓‿◓",   # looking up
 }
 
-# Hand states — ring of curly brackets, optionally with a glow glyph
-# between them. The outer `╭╮` is structural (always dim); the inner
-# glyph, when present, is the glowing fingertip — red in phone-home mode.
+# Hand states (one-line sprites — used by et reset, mood footer, etc.)
+# The outer `╭╮` is structural (always dim); the inner glyph, when
+# present, is the glowing fingertip — red in phone-home mode.
 HANDS = {
     "rest":       ("╭", "",  "╮"),   # no glow
     "spark":      ("╭", "·", "╮"),   # warming up
@@ -107,6 +107,65 @@ HANDS = {
     "lit":        ("╭", "●", "╮"),
     "burn":       ("╭", "⦿", "╮"),   # peak
 }
+
+
+# ── Two-line lollipop sprite ─────────────────────────────────────────
+# For live spinners (et sync), the face goes two rows tall: eyebrows +
+# finger-ball on top, eyes + finger-stem below. Brows animate per phase;
+# the fingertip is a lollipop ball whose size = current glow intensity.
+#
+#   Line 1:   ⌒ ⌒   ●         (brow pair + glow ball)
+#   Line 2:   ◉‿◉   │         (eye face + stem)
+#
+# Columns: brow/face at 0-2, gap at 3-5, finger at col 6.
+
+BROWS = {
+    "neutral": "‾ ‾",    # flat
+    "raised":  "⌒ ⌒",    # curious
+    "arch":    "╭ ╮",    # surprised
+    "furrow":  "＾ ＾",   # focused
+    "tilt":    "ˇ ˇ",    # thinking
+    "flat":    "﹏ ﹏",   # annoyed
+}
+
+STEM = "│"
+
+# Top-of-lollipop glow characters (match HANDS intensity ladder).
+GLOW_BALL = {
+    "spark": "·",
+    "small": "•",
+    "lit":   "●",
+    "burn":  "⦿",
+}
+
+
+def mascot_tall(
+    face: str = "open",
+    brow: str = "neutral",
+    glow: str = "spark",
+    *,
+    glowing: bool = False,
+) -> tuple[str, str]:
+    """Compose a two-line lollipop sprite. Returns (top_row, bottom_row).
+
+    top_row:    eyebrows + 3-space gap + finger-ball glyph
+    bottom_row: eye face + 3-space gap + finger stem
+
+    Rows align at column 6 so the ball sits directly above the stem.
+    Top row is always short (no label); callers concatenate the bottom
+    row with their label + detail strings.
+    """
+    f = FACES.get(face, FACES["open"])
+    b = BROWS.get(brow, BROWS["neutral"])
+    ball = GLOW_BALL.get(glow, "·")
+
+    ball_colored = red_tone(ball) if glowing else dim(ball)
+    stem_colored = red_tone(STEM) if glowing else dim(STEM)
+
+    # Three spaces between face/brow (3 cells wide) and the finger (1 cell).
+    top = f"{dim(b)}   {ball_colored}"
+    bottom = f"{f}   {stem_colored}"
+    return top, bottom
 
 
 def mascot(face: str = "open", hand: str = "rest", *, glowing: bool = False) -> str:
