@@ -71,7 +71,7 @@ classes:
 **Public API (the consumer experience):**
 
 ```python
-from schema.generated import models as m
+from extended_thinking._schema import models as m
 from extended_thinking.storage import GraphStore, default_ontology
 
 kg = GraphStore(db_path, ontology=default_ontology())

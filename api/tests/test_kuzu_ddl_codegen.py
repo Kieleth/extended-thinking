@@ -21,7 +21,7 @@ from pathlib import Path
 import kuzu
 import pytest
 
-from schema.generated.kuzu_ddl import (
+from extended_thinking._schema.kuzu_ddl import (
     COLUMN_MAPPING,
     EDGE_TABLES,
     EXTENDED_THINKING_DDL,

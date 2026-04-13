@@ -34,7 +34,7 @@ class Ontology:
 
     @classmethod
     def from_module(cls, module: ModuleType, *, name: str | None = None) -> "Ontology":
-        """Load from a module shaped like `schema.generated.kuzu_ddl`.
+        """Load from a module shaped like `extended_thinking._schema.kuzu_ddl`.
 
         The module must export EXTENDED_THINKING_DDL, NODE_TABLES,
         EDGE_TABLES, COLUMN_MAPPING (the names our codegen emits).
@@ -77,5 +77,5 @@ class Ontology:
 
 def default_ontology() -> Ontology:
     """The canonical ET ontology — imports the generated kuzu_ddl module."""
-    from schema.generated import kuzu_ddl
+    from extended_thinking._schema import kuzu_ddl
     return Ontology.from_module(kuzu_ddl, name="extended-thinking")

@@ -23,9 +23,11 @@ _API_ROOT = Path(__file__).resolve().parent.parent
 if str(_API_ROOT) not in sys.path:
     sys.path.insert(0, str(_API_ROOT))
 
-# Repo root — lets tests import `schema.generated.*` (ADR 013 codegen output)
-# regardless of where pytest was invoked from. `make test` runs
-# `cd api && pytest`, which otherwise would not see the top-level schema/ dir.
+# Repo root on sys.path so the codegen-regenerability tests can
+# `from scripts.gen_kuzu_types import ...` — the generator scripts live
+# outside the wheel by design (build-time tooling, not runtime). Runtime
+# `extended_thinking._schema.*` imports resolve via the package and do
+# NOT need this hack.
 _REPO_ROOT = _API_ROOT.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))

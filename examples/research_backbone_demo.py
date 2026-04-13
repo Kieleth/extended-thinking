@@ -55,7 +55,7 @@ def iso_minus(days: int) -> str:
 
 def main() -> int:
     from extended_thinking.storage import StorageLayer
-    from schema.generated import models as m
+    from extended_thinking._schema import models as m
 
     print("ADR 013 research-backbone demo")
     print("=" * 60)

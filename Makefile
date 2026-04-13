@@ -1,5 +1,8 @@
 SCHEMA_SRC     = schema/extended_thinking.yaml
-GENERATED_DIR  = schema/generated
+# Generated Python artifacts live inside the package so the wheel ships them.
+# JSON Schema + TS types also land here as reference outputs; the wheel
+# carries them too (see api/pyproject.toml [tool.setuptools.package-data]).
+GENERATED_DIR  = api/src/extended_thinking/_schema
 
 .PHONY: schema schema-pydantic schema-json schema-ts schema-kuzu schema-kuzu-ddl schema-kuzu-types schema-check setup dev-api dev-web dev test lint seed clean-schema at at-vcr at-live at-record at-update-snapshots
 

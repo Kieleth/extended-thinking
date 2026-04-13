@@ -1692,7 +1692,7 @@ def _handle_et_find_similar(pipeline, arguments: dict) -> str:
 def _resolve_registered_class(type_name: str, expected: str):
     """Return the registered pydantic class for a string type name, or
     raise ValueError with a helpful list of what's actually registered."""
-    from schema.generated.kuzu_types import EDGE_TYPES, KUZU_TABLE, NODE_TYPES
+    from extended_thinking._schema.kuzu_types import EDGE_TYPES, KUZU_TABLE, NODE_TYPES
 
     for cls in KUZU_TABLE:
         if cls.__name__ == type_name:
@@ -1794,7 +1794,7 @@ def _handle_et_add_edge(pipeline, arguments: dict) -> str:
 def _handle_et_write_rationale(pipeline, arguments: dict) -> str:
     """Grounded-rationale guarantee: verify every citation resolves in the
     same namespace before creating the Rationale node."""
-    from schema.generated import models as _m
+    from extended_thinking._schema import models as _m
 
     subject_id = arguments.get("subject_node_id", "")
     text = arguments.get("text", "")

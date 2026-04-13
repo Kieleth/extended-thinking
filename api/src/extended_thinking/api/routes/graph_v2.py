@@ -78,7 +78,7 @@ def _resolve_class(type_name: str, expected: str):
     `expected` is "node" or "edge"; raised if the resolved class is the
     wrong kind (prevents POST /node with an edge type and vice versa).
     """
-    from schema.generated.kuzu_types import EDGE_TYPES, KUZU_TABLE, NODE_TYPES
+    from extended_thinking._schema.kuzu_types import EDGE_TYPES, KUZU_TABLE, NODE_TYPES
 
     for cls in KUZU_TABLE:
         if cls.__name__ == type_name:

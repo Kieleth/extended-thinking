@@ -243,7 +243,7 @@ class TestFullChainWalkback:
         to extractor-originated nodes. The walkback query must stay
         empty for those, not return spurious rows."""
         pipeline, _ = synced_pipeline
-        from schema.generated import models as m
+        from extended_thinking._schema import models as m
 
         pipeline.store.insert(
             m.Concept(

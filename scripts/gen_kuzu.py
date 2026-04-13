@@ -4,7 +4,7 @@
 Reads `schema/extended_thinking.yaml` via LinkML SchemaView (imports resolved
 against `schema/imports/malleus.yaml`), emits Kuzu CREATE TABLE statements
 for every class in the ET ontology, and writes them to
-`schema/generated/kuzu_ddl.py`.
+`api/src/extended_thinking/_schema/kuzu_ddl.py`.
 
 Usage:
     python scripts/gen_kuzu.py
@@ -45,7 +45,9 @@ from linkml_runtime.utils.schemaview import SchemaView
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCHEMA_PATH = REPO_ROOT / "schema" / "extended_thinking.yaml"
-OUTPUT_PATH = REPO_ROOT / "schema" / "generated" / "kuzu_ddl.py"
+OUTPUT_PATH = (
+    REPO_ROOT / "api" / "src" / "extended_thinking" / "_schema" / "kuzu_ddl.py"
+)
 
 
 # ── Type + name maps ─────────────────────────────────────────────────

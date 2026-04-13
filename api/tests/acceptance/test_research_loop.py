@@ -26,7 +26,7 @@ import pytest
 
 from extended_thinking.mcp_server import handle_tool_call
 from extended_thinking.storage import StorageLayer
-from schema.generated import models as m
+from extended_thinking._schema import models as m
 
 pytestmark = pytest.mark.acceptance
 

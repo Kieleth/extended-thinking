@@ -3,7 +3,7 @@
 DO NOT EDIT. Regenerate with:
     python scripts/gen_kuzu_types.py
 
-Bridges pydantic domain types (`schema.generated.models`) with Kuzu's
+Bridges pydantic domain types (`extended_thinking._schema.models`) with Kuzu's
 storage layer. Pydantic stays the single source of truth for shape and
 validation; this module adds Kuzu-specific serialization (renames,
 system columns, enum coercion).
@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, TypeVar
 
-from schema.generated import models as _m
+from extended_thinking._schema import models as _m
 
 
 T = TypeVar("T")
@@ -103,11 +103,13 @@ def _unscalarize(value: Any, target_type: Any) -> Any:
     if value is None or value == "":
         return None
     # Enum coercion: if the pydantic field is an Enum subclass, restore it.
+    # Unknown enum values fall through to the raw string — no silent swallow,
+    # the return is the semantic outcome of a failed enum round-trip.
     try:
         if isinstance(target_type, type) and issubclass(target_type, Enum):
             return target_type(value)
     except (ValueError, TypeError):
-        pass
+        return value
     return value
 
 

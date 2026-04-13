@@ -15,7 +15,7 @@ import pytest
 
 from extended_thinking.algorithms import AlgorithmContext, get_by_name
 from extended_thinking.storage.graph_store import GraphStore
-from schema.generated import models as m
+from extended_thinking._schema import models as m
 
 
 @pytest.fixture

@@ -32,11 +32,12 @@ Malleus root ontology (Entity / Event / Signal / Relation + mixins)
 
     ▼ make schema-kuzu (LinkML → codegen)
 
-schema/generated/
+api/src/extended_thinking/_schema/  ← ships in the wheel
   ├── kuzu_ddl.py      CREATE NODE/REL TABLE statements
   ├── kuzu_types.py    Pydantic-to-Kuzu bridge (to_kuzu_row / from_kuzu_row)
   ├── models.py        Pydantic types (existing gen-pydantic output)
-  └── schema.json      JSON Schema
+  ├── schema.json      JSON Schema
+  └── types.ts         TypeScript types (for web consumers)
 
 AUDIENCE 1 — MEMORY SYNTHESIS (namespace="memory"):
 External Data Sources (D+I layer, pluggable)
@@ -96,7 +97,7 @@ See [docs/ADR/001-pluggable-memory.md](docs/ADR/001-pluggable-memory.md) for the
 - **Frontend**: Next.js 16 / React / TypeScript / Tailwind / shadcn/ui (legacy, MCP is primary UI)
 - **Root ontology**: [malleus](../malleus) (LinkML). Entity / Event / Signal / Relation + mixins. Every ET class declares `is_a:` a malleus root. ADR 013 v2.
 - **Internal KG**: Kuzu GraphStore, ontology-driven (Architecture A). Schema = generated DDL from the LinkML. Every node/edge bitemporal + namespaced.
-- **Codegen**: `make schema-kuzu` → `schema/generated/kuzu_ddl.py` (DDL) and `kuzu_types.py` (Pydantic-to-Kuzu bridge). `make schema-check` guards against drift.
+- **Codegen**: `make schema-kuzu` → `api/src/extended_thinking/_schema/kuzu_ddl.py` (DDL) and `kuzu_types.py` (Pydantic-to-Kuzu bridge). Generated artifacts live inside the package so the wheel ships them. `make schema-check` guards against drift.
 - **Semantic search**: ChromaDB via VectorStore protocol (optional)
 - **Memory providers**: Pluggable via MemoryProvider. Batteries-included: claude-code, chatgpt-export, copilot-chat, cursor, generic-openai-chat, folder. Optional: mempalace.
 - **Algorithms**: Plugin registry — 8 families, 9 built-in plugins, all toggleable. `AlgorithmContext.namespace` scopes runs. Third parties can register via entry points.

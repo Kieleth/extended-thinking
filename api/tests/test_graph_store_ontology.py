@@ -22,7 +22,7 @@ import pytest
 
 from extended_thinking.storage.graph_store import GraphStore
 from extended_thinking.storage.ontology import Ontology, default_ontology
-from schema.generated import models as m
+from extended_thinking._schema import models as m
 
 
 # ── Ontology abstraction ──────────────────────────────────────────────
@@ -38,7 +38,7 @@ class TestOntology:
         assert "RelatesTo" in ont.edge_tables
 
     def test_from_module_reads_generated_fields(self):
-        from schema.generated import kuzu_ddl
+        from extended_thinking._schema import kuzu_ddl
         ont = Ontology.from_module(kuzu_ddl, name="et")
         assert ont.name == "et"
         assert ont.node_tables == kuzu_ddl.NODE_TABLES

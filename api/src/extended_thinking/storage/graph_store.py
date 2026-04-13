@@ -85,7 +85,7 @@ class GraphStore:
         `add_provenance`) remain as ergonomic helpers for the memory
         pipeline; they write to the same ontology-driven tables.
         """
-        from schema.generated.kuzu_types import (
+        from extended_thinking._schema.kuzu_types import (
             EDGE_TYPES,
             KUZU_TABLE,
             NODE_TYPES,

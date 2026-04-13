@@ -28,7 +28,7 @@ import pytest
 
 from extended_thinking.storage.graph_store import GraphStore
 from extended_thinking.storage.vector_protocol import VectorResult
-from schema.generated import models as m
+from extended_thinking._schema import models as m
 
 
 # ── A deterministic in-memory VectorStore stand-in ────────────────────

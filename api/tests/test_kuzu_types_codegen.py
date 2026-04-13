@@ -1,6 +1,6 @@
 """ADR 013 Phase 0: typed Python accessors codegen (scripts/gen_kuzu_types.py).
 
-Tests that the generated `schema.generated.kuzu_types` module:
+Tests that the generated `extended_thinking._schema.kuzu_types` module:
   - Registers every concrete ET node + edge class.
   - Maps each to its Kuzu table name consistently with kuzu_ddl.py.
   - Serializes pydantic instances to Kuzu-ready row dicts:
@@ -23,13 +23,13 @@ from pathlib import Path
 import kuzu
 import pytest
 
-from schema.generated import models as m
-from schema.generated.kuzu_ddl import EXTENDED_THINKING_DDL
-from schema.generated.kuzu_ddl import (
+from extended_thinking._schema import models as m
+from extended_thinking._schema.kuzu_ddl import EXTENDED_THINKING_DDL
+from extended_thinking._schema.kuzu_ddl import (
     EDGE_TABLES as DDL_EDGES,
     NODE_TABLES as DDL_NODES,
 )
-from schema.generated.kuzu_types import (
+from extended_thinking._schema.kuzu_types import (
     COLUMN_RENAMES,
     EDGE_TYPES,
     KUZU_TABLE,

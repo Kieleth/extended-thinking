@@ -95,7 +95,7 @@ class _AcceptGate:
 def _seed_frequent_concepts(kg, ids, *, freq=10):
     """Seed concepts with frequency high enough to cross the default
     trigger threshold (3)."""
-    from schema.generated import models as m
+    from extended_thinking._schema import models as m
     for cid, name in ids:
         kg.insert(
             m.Concept(

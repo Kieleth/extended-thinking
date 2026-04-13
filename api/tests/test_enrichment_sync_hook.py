@@ -68,7 +68,7 @@ class _AcceptGate:
 def enrichment_pipeline(tmp_path, monkeypatch):
     import extended_thinking.algorithms as algos
     import extended_thinking.config as config_module
-    from schema.generated import models as m
+    from extended_thinking._schema import models as m
 
     monkeypatch.setattr(
         config_module.settings,

@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 from extended_thinking.storage.graph_store import GraphStore
-from schema.generated import models as m
+from extended_thinking._schema import models as m
 
 
 @pytest.fixture
@@ -280,7 +280,7 @@ class TestExtensibility:
     Concept and Wisdom variants."""
 
     def test_multiple_enriches_variants_coexist(self, kg):
-        from schema.generated import kuzu_types as kt
+        from extended_thinking._schema import kuzu_types as kt
         enriches_variants = [
             t for t in kt.EDGE_TYPES if "nriches" in t.__name__
         ]

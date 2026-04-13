@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "extended-thinking"
-version = "0.1.2"
+version = "0.2.0"
 description = "A pluggable thinking layer for AI-augmented work. Concept extraction, bitemporal knowledge graph, and grounded wisdom synthesis over any memory system."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -85,7 +85,15 @@ Issues = "https://github.com/Kieleth/extended-thinking/issues"
 where = ["src"]
 
 [tool.setuptools.package-data]
-extended_thinking = ["hooks/*.sh", "py.typed"]
+extended_thinking = [
+    "hooks/*.sh",
+    "py.typed",
+    # Generated schema artifacts (LinkML → Pydantic + Kuzu DDL/types + JSON/TS).
+    # The `.py` files ship via packages.find, these are the non-Python outputs
+    # we also want bundled so consumers can reference schema.json / types.ts.
+    "_schema/*.json",
+    "_schema/*.ts",
+]
 
 [tool.ruff]
 target-version = "py312"

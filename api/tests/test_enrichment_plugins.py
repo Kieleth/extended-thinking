@@ -80,7 +80,7 @@ class TestFrequencyThresholdTrigger:
         kg.add_concept("c-mem-1", "mem", "topic", "")
         kg.add_concept("c-mem-1", "mem", "topic", "")
         # And a research concept — shouldn't surface in namespace=memory
-        from schema.generated import models as m
+        from extended_thinking._schema import models as m
         kg.insert(m.Concept(id="c-res-1", name="research",
                             category=m.ConceptCategory.topic, frequency=10),
                   namespace="research")

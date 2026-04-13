@@ -50,6 +50,40 @@ jobs:
         run: |
           cd api && python -m twine check dist/*
 
+      - name: Smoke test installed wheel
+        # Catches the v0.1.0/v0.1.1/v0.1.2 class of bug: a wheel that
+        # builds cleanly and passes twine check, but crashes on the very
+        # first import because a generated or data file didn't make it
+        # into the package layout. We install the freshly-built wheel
+        # into a venv OUTSIDE the checkout so there's no repo sys.path
+        # leakage masking a missing artifact.
+        run: |
+          set -euo pipefail
+          SMOKE_DIR="$(mktemp -d)"
+          cd "$SMOKE_DIR"
+          python -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install "$GITHUB_WORKSPACE"/api/dist/*.whl
+          .venv/bin/python - <<'PY'
+          # Imports that MUST survive in an installed wheel.
+          from extended_thinking._schema import kuzu_ddl, kuzu_types, models
+          from extended_thinking.storage import GraphStore
+          from extended_thinking.storage.ontology import default_ontology
+          from extended_thinking.mcp_server import TOOLS
+
+          # Runtime construction — this is what `et sync` does on line 1.
+          import tempfile, pathlib
+          tmp = pathlib.Path(tempfile.mkdtemp())
+          kg = GraphStore(tmp / "kg", ontology=default_ontology())
+          assert len(kuzu_ddl.EXTENDED_THINKING_DDL) >= 15, "DDL table count looks wrong"
+          assert len(kuzu_types.NODE_TYPES) >= 10, "NODE_TYPES registry is empty"
+          assert len(TOOLS) >= 10, "MCP tool catalog is empty"
+          print(f"smoke: OK — {len(kuzu_ddl.EXTENDED_THINKING_DDL)} tables, "
+                f"{len(kuzu_types.NODE_TYPES)} node types, {len(TOOLS)} MCP tools")
+          PY
+          .venv/bin/et --help >/dev/null
+          echo "smoke: et --help exits 0"
+
       - name: Upload dist
         uses: actions/upload-artifact@v4
         with:

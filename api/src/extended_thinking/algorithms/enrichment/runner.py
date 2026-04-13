@@ -85,7 +85,7 @@ def run_enrichment(
     is False — callers check that flag before invoking this. Once called,
     we trust that every plugin passed in is active by user config.
     """
-    from schema.generated import models as _m
+    from extended_thinking._schema import models as _m
 
     for s in sources:
         assert_family(s, "enrichment.sources")
@@ -257,7 +257,7 @@ def _commit_enrichment(
     summary: EnrichmentRunSummary,
 ) -> None:
     """Upsert a KnowledgeNode and attach an Enriches edge."""
-    from schema.generated import models as _m
+    from extended_thinking._schema import models as _m
 
     kn_id = f"kn-{source_kind}-{candidate.external_id}"
     # Idempotent insert: skip if the KnowledgeNode already exists.
