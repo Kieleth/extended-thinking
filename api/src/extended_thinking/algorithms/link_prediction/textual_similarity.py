@@ -70,14 +70,23 @@ class TextualSimilarityLinkPrediction:
         """
         kg = context.kg
         as_of = context.as_of
+        namespace = getattr(context, "namespace", None)
 
-        if as_of and hasattr(kg, "list_concepts"):
+        def _load():
+            if not hasattr(kg, "list_concepts"):
+                return []
+            kwargs: dict = {"limit": 1000}
+            if as_of:
+                kwargs["as_of"] = as_of
+            if namespace:
+                kwargs["namespace"] = namespace
             try:
-                concepts = kg.list_concepts(limit=1000, as_of=as_of)
+                return kg.list_concepts(**kwargs)
             except TypeError:
-                concepts = kg.list_concepts(limit=1000)
-        else:
-            concepts = kg.list_concepts(limit=1000) if hasattr(kg, "list_concepts") else []
+                kwargs.pop("namespace", None)
+                return kg.list_concepts(**kwargs)
+
+        concepts = _load()
 
         if len(concepts) < 2:
             return []

@@ -79,7 +79,13 @@ class Pipeline:
         """
         all_chunks = self._provider.get_recent(since=self._last_sync, limit=limit)
         if not all_chunks:
-            return {"chunks_processed": 0, "concepts_extracted": 0, "status": "no_new_data"}
+            # No provider data at all — enrichment (ADR 011 v2) still runs
+            # because triggers watch the existing graph, not new chunks.
+            return self._build_sync_result(
+                {"chunks_processed": 0, "concepts_extracted": 0,
+                 "status": "no_new_data"},
+                self._run_enrichment_if_enabled(),
+            )
 
         # Filter out already-processed chunks
         unprocessed_ids = self._store.filter_unprocessed([c.id for c in all_chunks])
@@ -93,7 +99,11 @@ class Pipeline:
             logger.info("Content filter: %d thinking, %d code skipped", len(chunks), filtered_out)
 
         if not chunks:
-            return {"chunks_processed": 0, "concepts_extracted": 0, "filtered_code": filtered_out, "status": "no_new_data"}
+            return self._build_sync_result(
+                {"chunks_processed": 0, "concepts_extracted": 0,
+                 "filtered_code": filtered_out, "status": "no_new_data"},
+                self._run_enrichment_if_enabled(),
+            )
 
         # Store chunks in VectorStore for semantic retrieval
         if self._vectors is not None:
@@ -231,15 +241,86 @@ class Pipeline:
         if chunks:
             self._last_sync = max(c.timestamp for c in chunks)
 
-        logger.info("Synced: %d chunks → %d concepts (%d code filtered, %d superseded)",
-                    len(chunks), len(concepts), filtered_out, supersession_count)
-        return {
+        # ADR 011 v2 — proactive enrichment at sync end.
+        # Entirely gated on [enrichment] enabled; internal-only users see
+        # no external calls, no runner invocation, no telemetry writes.
+        enrichment_summary = self._run_enrichment_if_enabled()
+
+        logger.info(
+            "Synced: %d chunks → %d concepts (%d code filtered, %d superseded, "
+            "%d enrichment runs)",
+            len(chunks), len(concepts), filtered_out, supersession_count,
+            enrichment_summary.runs_recorded if enrichment_summary else 0,
+        )
+        return self._build_sync_result({
             "chunks_processed": len(chunks),
             "concepts_extracted": len(concepts),
             "filtered_code": filtered_out,
             "superseded": supersession_count,
             "status": "synced",
+        }, enrichment_summary)
+
+    def _build_sync_result(self, base: dict, enrichment_summary) -> dict:
+        """Attach an enrichment subsection to a sync() result when the
+        runner produced one. Kept as a method so every exit point — the
+        happy path and the two early-returns — wires enrichment the same
+        way. A None summary means the master toggle was off; the key is
+        elided so callers that don't care see the same shape as pre-011."""
+        if enrichment_summary is None:
+            return base
+        base["enrichment"] = {
+            "triggers_fired": enrichment_summary.triggers_fired,
+            "candidates_returned": enrichment_summary.candidates_returned,
+            "candidates_accepted": enrichment_summary.candidates_accepted,
+            "knowledge_nodes_created": enrichment_summary.knowledge_nodes_created,
+            "edges_created": enrichment_summary.edges_created,
+            "runs_recorded": enrichment_summary.runs_recorded,
+            "errors": enrichment_summary.errors[:10],
         }
+        return base
+
+    def _run_enrichment_if_enabled(self):
+        """Invoke the enrichment runner if `[enrichment] enabled = true`.
+
+        Returns `EnrichmentRunSummary | None`. Returns None (silently)
+        when the master toggle is off — zero external calls, zero new
+        graph writes. ADR 011 v2's internal-only contract.
+        """
+        from extended_thinking.config import settings
+        if not settings.enrichment.enabled:
+            return None
+
+        from extended_thinking.algorithms import (
+            build_config_from_settings,
+            get_active,
+        )
+        from extended_thinking.algorithms.enrichment.runner import (
+            run_enrichment,
+        )
+
+        algo_config = build_config_from_settings(settings.algorithms)
+        sources = get_active("enrichment.sources", algo_config)
+        triggers = get_active("enrichment.triggers", algo_config)
+        gates = get_active("enrichment.relevance_gates", algo_config)
+        cache_plugins = get_active("enrichment.cache", algo_config)
+        cache = cache_plugins[0] if cache_plugins else None
+
+        if not sources or not triggers or not gates:
+            logger.info(
+                "enrichment enabled but missing plugins "
+                "(sources=%d, triggers=%d, gates=%d) — skipping",
+                len(sources), len(triggers), len(gates),
+            )
+            return None
+
+        return run_enrichment(
+            kg=self._store,
+            sources=sources,
+            triggers=triggers,
+            gates=gates,
+            cache=cache,
+            concept_namespace=settings.enrichment.concept_namespace,
+        )
 
     # ── Wisdom: Opus synthesis ───────────────────────────────────────
 

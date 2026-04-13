@@ -489,6 +489,84 @@ TOOLS = [
             "required": ["type", "properties"],
         },
     },
+    # ── Enrichment tools (ADR 011 v2) ────────────────────────────────
+    {
+        "name": "et_extend",
+        "description": (
+            "List external-knowledge nodes enriching a concept (ADR 011 v2). "
+            "Answers 'what does the world say about this concept?'. "
+            "Filter by source or theme when a concept has a lot attached."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "concept_id": {
+                    "type": "string",
+                    "description": "User concept to inspect.",
+                },
+                "source": {
+                    "type": "string",
+                    "description": "Filter to one source ('wikipedia', 'arxiv', ...). Empty = all.",
+                    "default": "",
+                },
+                "theme": {
+                    "type": "string",
+                    "description": "Filter to one theme tag (matched against the KnowledgeNode theme array). Empty = all.",
+                    "default": "",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max KnowledgeNodes to return.",
+                    "default": 10,
+                },
+            },
+            "required": ["concept_id"],
+        },
+    },
+    {
+        "name": "et_extend_force",
+        "description": (
+            "Trigger enrichment on a single concept right now, bypassing the "
+            "configured triggers (ADR 011 v2). Useful for first-time ingestion "
+            "and 'I need Wikipedia on this concept immediately' flows. "
+            "Requires [enrichment] enabled = true in config."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "concept_id": {
+                    "type": "string",
+                    "description": "Concept to enrich.",
+                },
+                "sources": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Source kinds to invoke (e.g. ['wikipedia']). Empty = all active sources.",
+                    "default": [],
+                },
+            },
+            "required": ["concept_id"],
+        },
+    },
+    {
+        "name": "et_extend_purge",
+        "description": (
+            "Bitemporally supersede every KnowledgeNode and Enriches edge "
+            "from a source (ADR 011 v2). Sets t_expired on the affected rows — "
+            "default queries stop seeing them; `as_of` queries still do. "
+            "For genuine disk reclamation see et_extend_compact (future)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "source_kind": {
+                    "type": "string",
+                    "description": "Source to purge ('wikipedia', 'arxiv', ...).",
+                },
+            },
+            "required": ["source_kind"],
+        },
+    },
     {
         "name": "et_run_algorithm",
         "description": (
@@ -1183,7 +1261,201 @@ async def handle_tool_call(name: str, arguments: dict) -> str:
     elif name == "et_run_algorithm":
         return _handle_et_run_algorithm(pipeline, arguments)
 
+    elif name == "et_extend":
+        return _handle_et_extend(pipeline, arguments)
+
+    elif name == "et_extend_force":
+        return _handle_et_extend_force(pipeline, arguments)
+
+    elif name == "et_extend_purge":
+        return _handle_et_extend_purge(pipeline, arguments)
+
     return f"Unknown tool: {name}"
+
+
+# ── Enrichment handlers (ADR 011 v2) ─────────────────────────────────
+
+def _handle_et_extend(pipeline, arguments: dict) -> str:
+    """List KnowledgeNodes attached to a concept, optionally filtered."""
+    concept_id = arguments.get("concept_id", "")
+    source_filter = arguments.get("source") or ""
+    theme_filter = arguments.get("theme") or ""
+    limit = int(arguments.get("limit", 10))
+
+    if not concept_id:
+        return "error: concept_id is required"
+
+    kg = pipeline.store
+    if kg.get_concept(concept_id) is None:
+        return f"error: concept {concept_id!r} not found"
+
+    cypher = (
+        "MATCH (c:Concept {id: $cid})-[r:Enriches]->(k:KnowledgeNode) "
+        "WHERE (k.t_expired IS NULL OR k.t_expired = '') "
+    )
+    params: dict = {"cid": concept_id, "limit": limit}
+    if source_filter:
+        cypher += "AND k.source_kind = $src "
+        params["src"] = source_filter
+    cypher += (
+        "RETURN k.id, k.source_kind, k.title, k.abstract, k.url, "
+        "k.theme, k.namespace, r.relevance, r.trigger "
+        "ORDER BY r.relevance DESC LIMIT $limit"
+    )
+    rows = kg._query_all(cypher, params)
+
+    import json as _json
+    results = []
+    for r in rows:
+        themes = []
+        if r[5]:
+            try:
+                themes = _json.loads(r[5])
+            except (ValueError, TypeError):
+                themes = []
+        if theme_filter and theme_filter not in themes:
+            continue
+        results.append({
+            "id": r[0],
+            "source_kind": r[1],
+            "title": r[2],
+            "abstract": (r[3] or "")[:400],
+            "url": r[4] or "",
+            "themes": themes,
+            "namespace": r[6],
+            "relevance": round(r[7], 3) if r[7] is not None else None,
+            "trigger": r[8] or "",
+        })
+
+    return _json.dumps({
+        "concept_id": concept_id,
+        "source_filter": source_filter or None,
+        "theme_filter": theme_filter or None,
+        "count": len(results),
+        "knowledge_nodes": results,
+    }, indent=2)
+
+
+def _handle_et_extend_force(pipeline, arguments: dict) -> str:
+    """On-demand enrichment for a single concept.
+
+    Still requires [enrichment] enabled = true — the master toggle
+    gates ALL external calls, not just the async trigger path.
+    """
+    from extended_thinking.algorithms import (
+        build_config_from_settings,
+        get_active,
+    )
+    from extended_thinking.algorithms.enrichment.runner import run_enrichment
+    from extended_thinking.algorithms.protocol import AlgorithmMeta
+    from extended_thinking.config import settings
+
+    concept_id = arguments.get("concept_id", "")
+    requested_sources = list(arguments.get("sources", []) or [])
+
+    if not concept_id:
+        return "error: concept_id is required"
+    if not settings.enrichment.enabled:
+        return (
+            "error: enrichment is disabled ([enrichment] enabled = false). "
+            "Enable it in config.toml before invoking et_extend_force."
+        )
+
+    kg = pipeline.store
+    if kg.get_concept(concept_id) is None:
+        return f"error: concept {concept_id!r} not found"
+
+    algo_config = build_config_from_settings(settings.algorithms)
+    sources = get_active("enrichment.sources", algo_config)
+    if requested_sources:
+        sources = [s for s in sources if s.source_kind() in requested_sources]
+    gates = get_active("enrichment.relevance_gates", algo_config)
+    cache_plugins = get_active("enrichment.cache", algo_config)
+    cache = cache_plugins[0] if cache_plugins else None
+
+    if not sources:
+        return (
+            "error: no active enrichment sources. "
+            f"Registered + enabled sources are required; requested={requested_sources or 'any'}."
+        )
+
+    # A synthetic trigger that fires for exactly this one concept.
+    class _OneShot:
+        meta = AlgorithmMeta(
+            name="et_extend_force",
+            family="enrichment.triggers",
+            description="on-demand synthetic trigger",
+            paper_citation="n/a",
+        )
+        def fired_concepts(self, ctx):
+            return [(concept_id, "et_extend_force")]
+
+    summary = run_enrichment(
+        kg=kg,
+        sources=sources,
+        triggers=[_OneShot()],
+        gates=gates,
+        cache=cache,
+        concept_namespace=settings.enrichment.concept_namespace,
+    )
+
+    import json as _json
+    return _json.dumps({
+        "concept_id": concept_id,
+        "triggers_fired": summary.triggers_fired,
+        "candidates_returned": summary.candidates_returned,
+        "candidates_accepted": summary.candidates_accepted,
+        "knowledge_nodes_created": summary.knowledge_nodes_created,
+        "edges_created": summary.edges_created,
+        "runs_recorded": summary.runs_recorded,
+        "errors": summary.errors[:5],
+    }, indent=2)
+
+
+def _handle_et_extend_purge(pipeline, arguments: dict) -> str:
+    """Supersede every enrichment row from one source. Bitemporal;
+    rows stay queryable via `as_of`."""
+    from datetime import datetime, timezone
+
+    source_kind = arguments.get("source_kind", "")
+    if not source_kind:
+        return "error: source_kind is required"
+
+    kg = pipeline.store
+    ns = f"enrichment:{source_kind}"
+    now = datetime.now(timezone.utc).isoformat()
+
+    # Count first so the response can report what we affected
+    kn_count_row = kg._query_one(
+        "MATCH (k:KnowledgeNode) WHERE k.namespace = $ns "
+        "AND (k.t_expired IS NULL OR k.t_expired = '') RETURN count(k)",
+        {"ns": ns},
+    )
+    kn_count = kn_count_row[0] if kn_count_row else 0
+
+    # Mark KnowledgeNodes expired
+    kg._conn.execute(
+        "MATCH (k:KnowledgeNode) WHERE k.namespace = $ns "
+        "AND (k.t_expired IS NULL OR k.t_expired = '') "
+        "SET k.t_expired = $now, k.t_valid_to = $now",
+        parameters={"ns": ns, "now": now},
+    )
+    # Mark Enriches edges expired too
+    kg._conn.execute(
+        "MATCH ()-[r:Enriches]->() WHERE r.namespace = $ns "
+        "AND (r.t_expired IS NULL OR r.t_expired = '') "
+        "SET r.t_expired = $now, r.t_valid_to = $now",
+        parameters={"ns": ns, "now": now},
+    )
+
+    import json as _json
+    return _json.dumps({
+        "source_kind": source_kind,
+        "namespace": ns,
+        "knowledge_nodes_superseded": kn_count,
+        "as_of": now,
+        "note": "rows remain queryable via as_of; use et_extend_compact (future) to reclaim disk.",
+    }, indent=2)
 
 
 def _handle_et_run_algorithm(pipeline, arguments: dict) -> str:
@@ -1207,6 +1479,14 @@ def _handle_et_run_algorithm(pipeline, arguments: dict) -> str:
         return "error: algorithm name is required"
 
     cfg = build_config_from_settings(settings.algorithms)
+    # Runtime params from the caller override configured defaults for this
+    # invocation — lets an MCP caller tune threshold/top_k without editing
+    # config. Registry instantiates per-call, so no cross-request leakage.
+    if params:
+        cfg = {**cfg, "parameters": {
+            **(cfg.get("parameters") or {}),
+            algo_name: {**(cfg.get("parameters", {}).get(algo_name, {})), **params},
+        }}
     alg = get_by_name(algo_name, cfg)
     if alg is None:
         return f"error: unknown algorithm {algo_name!r}. Run et_catalog to list."

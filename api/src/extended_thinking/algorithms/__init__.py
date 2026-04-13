@@ -54,3 +54,11 @@ from extended_thinking.algorithms.activation import weighted_bfs  # noqa: F401, 
 from extended_thinking.algorithms.bridges import top_percentile  # noqa: F401, E402
 from extended_thinking.algorithms.link_prediction import embedding_similarity  # noqa: F401, E402
 from extended_thinking.algorithms.activity_score import recency_weighted  # noqa: F401, E402
+
+# ADR 011 v2 enrichment plugins (Phase B MVP).
+# Each registers itself on import; `[enrichment] enabled = false` by default
+# keeps them inert until the user opts in.
+from extended_thinking.algorithms.enrichment.triggers import frequency_threshold  # noqa: F401, E402
+from extended_thinking.algorithms.enrichment.relevance_gates import embedding_cosine as _enrichment_embedding_cosine  # noqa: F401, E402
+from extended_thinking.algorithms.enrichment.cache import time_to_refresh  # noqa: F401, E402
+from extended_thinking.algorithms.enrichment.sources import wikipedia  # noqa: F401, E402

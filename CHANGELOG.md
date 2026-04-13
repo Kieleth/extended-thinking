@@ -5,6 +5,13 @@ Semantic-ish versioning. Pre-1.0 means the API can change between minor versions
 ## [Unreleased]
 
 ### Added
+- **Proactive enrichment (ADR 011 v2), Phase A + B shipped.** Optional "internal + world" UX mode. When `[enrichment] enabled = true`, ET watches the concept graph for triggers (e.g. frequency crossing a threshold) and attaches external canonical references as `KnowledgeNode` signals behind an `Enriches` edge with gate-verdict provenance. Per-source namespaces (`enrichment:<source_kind>`) keep world-signals isolated from memory concepts. Master toggle defaults to off — the internal-only contract holds until opted in.
+- **Four MVP enrichment plugins.** `wikipedia` source (REST API with optional Haiku theme classifier), `frequency_threshold` trigger (fires on concepts above a configurable min_frequency), `embedding_cosine_gate` relevance gate (floor + auto-accept ceiling, soft-accepts when no VectorStore), `time_to_refresh` cache policy (90d Wikipedia default, arXiv never-stale, configurable per-source overrides).
+- **Enrichment MCP tools.** `et_extend` (read attached KnowledgeNodes with optional theme filter), `et_extend_force` (on-demand enrichment bypassing triggers, still gated on the master toggle), `et_extend_purge` (bitemporal supersession per source_kind — hides from default queries but keeps raw rows for audit).
+- **Enrichment telemetry.** One `EnrichmentRun` node per (trigger, source, concept) carrying `trigger_name`, `source_kind`, `concept_id`, `candidates_returned`, `candidates_accepted`, `gate_trace` (JSON), `duration_ms`, `error`. Lets operators tune thresholds from data.
+- **Ontology additions.** `KnowledgeNode` (Signal), `EnrichmentRun` (Event), `Enriches` / `WisdomEnriches` (Relation). All malleus-rooted per ADR 013 v2.
+- **Acceptance test coverage across ADRs 011 + 013.** Four new AT files at `api/tests/acceptance/`: `test_typed_write_surface.py` (C1/C3/C4/C5/C8), `test_research_loop.py` (C2/C6/C7), `test_enrichment_at.py` (enrichment lifecycle end-to-end through `Pipeline.sync()`), `test_provenance_chain.py` (Product Invariant 1 — three-hop `Wisdom → Concept → Chunk` walkback).
+- **Runtime algorithm parameters over MCP.** `et_run_algorithm(params={...})` now merges caller-supplied params into the registry config before instantiation, so thresholds and top_k can be tuned per invocation without editing config files.
 - **Research-backbone audience (ADR 013), shipped.** ET accepts a second audience alongside memory synthesis: programmatic consumers using ET as a typed, bitemporal, queryable state store (research loops, workflow engines, typed archives). [autoresearch-ET](../autoresearch-ET) is the canonical reference consumer. All nine capabilities (C1-C9) delivered; see [docs/research-backbone.md](docs/research-backbone.md) for the consumer primer.
 - **Write surface: HTTP + MCP.** `POST /api/v2/graph/node` and `/edge` (C3) return after Kuzu commit with `vectors_pending=true` marker. MCP tools `et_add_node`, `et_add_edge`, `et_write_rationale` (C4) mirror the HTTP shape. `et_write_rationale` enforces the grounded-citation guarantee — unresolved `cited_node_ids` reject the write.
 - **Filtered bitemporal queries.** `GraphStore.diff(from, to, *, node_types, edge_types, property_match, namespace)` and the `et_shift` MCP tool return only the slice you ask for. Generic `nodes_added`/`nodes_expired`/`edges_added`/`edges_expired` shape with `_type` tags; legacy keys preserved for back-compat (C5).
@@ -56,6 +63,8 @@ Semantic-ish versioning. Pre-1.0 means the API can change between minor versions
 - Pipeline resolution, spreading activation, and bridge detection all routed through plugin registry.
 
 ### Fixed
+- **Enrichment fires on empty-chunk syncs.** `Pipeline.sync()` used to short-circuit when the provider returned no new chunks, skipping the enrichment hook entirely. Triggers watch the existing graph, not freshly-ingested chunks, so the hook now runs on every sync regardless of chunk count. `_build_sync_result()` helper unifies the three exit points.
+- **`textual_similarity` respects `AlgorithmContext.namespace`.** Previously pulled concepts from all namespaces via unfiltered `list_concepts()`, causing memory-side noise to leak into research-scoped runs. Now passes `namespace=` through when set.
 - Same-batch edges removed (noise from extraction coincidence, not semantic relatedness).
 - Entity resolution plugin-first; pipeline no longer calls `GraphStore.find_similar_concept` directly.
 - Provenance now links concepts to source chunks with LLM model + timestamp.
