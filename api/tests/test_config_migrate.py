@@ -124,7 +124,13 @@ class TestLegacyMigration:
 
 class TestConflictBothHaveData:
 
-    def test_refuses_to_touch_either(self, xdg_home, legacy, caplog):
+    def test_raises_without_touching_either(self, xdg_home, legacy):
+        """Both dirs hold data → raise DataDirConflict, leave both
+        untouched. The CLI catches it and renders a notice with a
+        copy-pasteable merge command."""
+        import pytest
+        from extended_thinking.config.migrate import DataDirConflict
+
         legacy.mkdir()
         (legacy / "legacy-data").write_text("old")
         target = xdg_home / "xdg_data" / "extended-thinking"
@@ -132,13 +138,19 @@ class TestConflictBothHaveData:
         (target / "new-data").write_text("new")
 
         s = _make_settings_with_default_root()
-        with caplog.at_level("WARNING"):
-            result = migrate_data_dir(s)
+        with pytest.raises(DataDirConflict) as exc_info:
+            migrate_data_dir(s)
 
+        # Neither dir was touched.
         assert (legacy / "legacy-data").exists()
         assert (target / "new-data").exists()
-        assert "automatic migration refused" in caplog.text.lower()
-        assert result == target
+
+        # Exception carries both paths + non-zero sizes.
+        conflict = exc_info.value
+        assert conflict.legacy == legacy
+        assert conflict.xdg == target
+        assert conflict.legacy_size > 0
+        assert conflict.xdg_size > 0
 
 
 # ── User override: skip migration ─────────────────────────────────────

@@ -21,6 +21,7 @@ a POSIX filesystem.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 
 from extended_thinking.config.paths import LEGACY_DATA_DIR, default_data_root
@@ -30,6 +31,42 @@ logger = logging.getLogger(__name__)
 
 # Process-wide marker so entry points can call this safely from multiple places.
 _migration_done = False
+
+
+@dataclass
+class DataDirConflict(Exception):
+    """Raised when both the legacy and XDG data dirs hold user data.
+
+    Carries both paths + sizes so the CLI can render a useful notice
+    with a copy-pasteable merge command. The data itself is never
+    touched — merging is a decision, not a default.
+    """
+    legacy: Path
+    xdg: Path
+    legacy_size: int  # bytes
+    xdg_size: int     # bytes
+
+    def __str__(self) -> str:
+        return (
+            f"both legacy {self.legacy} and XDG {self.xdg} hold data; "
+            "merge manually before continuing"
+        )
+
+
+def _dir_size(path: Path) -> int:
+    """Total bytes under a directory. Returns 0 on any IO error — size
+    is diagnostic, not load-bearing."""
+    total = 0
+    try:
+        for p in path.rglob("*"):
+            if p.is_file():
+                try:
+                    total += p.stat().st_size
+                except OSError:
+                    continue
+    except OSError:
+        return 0
+    return total
 
 
 def migrate_data_dir(settings: Settings, *, force: bool = False) -> Path:
@@ -74,15 +111,16 @@ def migrate_data_dir(settings: Settings, *, force: bool = False) -> Path:
         _migration_done = True
         return target
 
-    # Case 3: both exist with content → dangerous, leave alone.
+    # Case 3: both exist with content → dangerous. Raise with both paths
+    # and sizes; the CLI renders a useful notice. We do not touch either.
     if target.exists() and any(target.iterdir()):
-        logger.warning(
-            "both legacy %s and XDG %s exist with data. "
-            "Automatic migration refused; merge or remove one manually.",
-            LEGACY_DATA_DIR, target,
-        )
         _migration_done = True
-        return target
+        raise DataDirConflict(
+            legacy=LEGACY_DATA_DIR,
+            xdg=target,
+            legacy_size=_dir_size(LEGACY_DATA_DIR),
+            xdg_size=_dir_size(target),
+        )
 
     # Case 4: XDG target exists but is empty → remove it, then rename.
     if target.exists():

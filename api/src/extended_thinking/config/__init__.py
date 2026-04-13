@@ -16,7 +16,7 @@ from extended_thinking.config.loader import (
     find_project_config,
     load_settings,
 )
-from extended_thinking.config.migrate import migrate_data_dir
+from extended_thinking.config.migrate import DataDirConflict, migrate_data_dir
 from extended_thinking.config.paths import (
     APP_NAME,
     LEGACY_DATA_DIR,
@@ -38,6 +38,7 @@ __all__ = [
     "Settings",
     "load_settings",
     "migrate_data_dir",
+    "DataDirConflict",
     "PROJECT_ROOT",
     "APP_NAME",
     "LEGACY_DATA_DIR",

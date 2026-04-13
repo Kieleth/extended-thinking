@@ -12,6 +12,31 @@ Usage:
 
 from __future__ import annotations
 
+# ── Silence the noise floor BEFORE any heavy import ──────────────────
+# Must happen at module top so the environment is set before chromadb,
+# huggingface/tokenizers, or any transitive import sees it. These are
+# not our warnings — they leak from dependencies and make ET output
+# look unfinished.
+import os as _os
+_os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")   # HF fork warning
+_os.environ.setdefault("ANONYMIZED_TELEMETRY", "false")     # chromadb posthog
+_os.environ.setdefault("CHROMA_TELEMETRY_IMPL", "none")
+
+import warnings as _warnings
+_warnings.filterwarnings("ignore", module=r"chromadb\..*")
+_warnings.filterwarnings("ignore", module=r"posthog\..*")
+_warnings.filterwarnings("ignore", module=r"transformers\..*")
+
+import logging as _logging
+# Chromadb logs telemetry errors at ERROR level, not WARNING, so a filter
+# on warnings alone doesn't catch them. Raise the floor for those loggers
+# specifically — we don't want their internal problems on our stdout.
+for _name in ("chromadb.telemetry", "chromadb.telemetry.product.posthog",
+              "posthog", "httpx"):
+    _logging.getLogger(_name).setLevel(_logging.CRITICAL + 1)
+
+# ── Real imports ─────────────────────────────────────────────────────
+
 import argparse
 import asyncio
 import json
@@ -20,8 +45,12 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+from extended_thinking import cli_style as style
+
 
 def _get_pipeline():
+    """Construct the pipeline. Raises DataDirConflict if both legacy and
+    XDG data dirs exist — the caller renders a notice."""
     from extended_thinking.config import migrate_data_dir, settings
     from extended_thinking.processing.pipeline_v2 import Pipeline
     from extended_thinking.providers import get_provider
@@ -32,15 +61,53 @@ def _get_pipeline():
     return Pipeline.from_storage(get_provider(), storage)
 
 
+def _humanize_bytes(n: int) -> str:
+    """`12 MB` / `842 KB` / `7 B`. Three significant figures max."""
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if n < 1024 or unit == "TB":
+            if unit == "B":
+                return f"{n} {unit}"
+            return f"{n:.0f} {unit}" if n >= 10 else f"{n:.1f} {unit}"
+        n /= 1024
+    return f"{n:.0f} TB"
+
+
+def _render_data_dir_conflict(exc) -> str:
+    """Turn a DataDirConflict into the redesigned notice."""
+    legacy_size = _humanize_bytes(exc.legacy_size)
+    xdg_size = _humanize_bytes(exc.xdg_size)
+    legacy_str = str(exc.legacy).replace(str(Path.home()), "~")
+    xdg_str = str(exc.xdg).replace(str(Path.home()), "~")
+
+    # Pad paths to the same column so the sizes line up
+    path_w = max(len(legacy_str), len(xdg_str))
+
+    rows = [
+        f"  {style.dim('legacy')}  {legacy_str:<{path_w}}  {legacy_size:>8}",
+        f"  {style.dim('xdg')}     {xdg_str:<{path_w}}  {xdg_size:>8}",
+    ]
+    return style.notice(
+        "two data directories hold data. merge manually before continuing.",
+        *rows,
+        "",
+        "to merge legacy into xdg:",
+        f"  {style.dim('$')} rsync -a {legacy_str}/ {xdg_str}/",
+        f"  {style.dim('$')} rm -rf {legacy_str}",
+        "",
+        "or keep one, remove the other, and run et sync again.",
+        tone="warn",
+    )
+
+
+# ── Commands ─────────────────────────────────────────────────────────
+
 def cmd_insight(force: bool = False) -> int:
     from extended_thinking.mcp_server import _render_insight
     pipeline = _get_pipeline()
 
-    print("Syncing...", end="", flush=True)
-    sync_result = asyncio.run(pipeline.sync())
-    print(f" {sync_result['concepts_extracted']} new concepts")
+    print(style.header("insight"))
 
-    print("Thinking...", end="", flush=True)
+    sync_result = asyncio.run(pipeline.sync())
     insight = asyncio.run(pipeline.get_insight())
 
     if insight["type"] == "nothing_new" and force:
@@ -51,11 +118,12 @@ def cmd_insight(force: bool = False) -> int:
     concepts = pipeline.store.list_concepts(order_by="frequency", limit=50)
     wisdoms = pipeline.store.list_wisdoms(limit=1)
 
+    print()
     if wisdoms:
-        print("\r" + " " * 20 + "\r", end="")
         print(_render_insight(wisdoms[0], concepts))
     else:
-        print(f"\n{insight.get('insight', {}).get('title', 'No insight available')}")
+        title = insight.get("insight", {}).get("title", "no insight available")
+        print(f"  {title}")
     return 0
 
 
@@ -63,15 +131,42 @@ def cmd_concepts(limit: int = 20) -> int:
     from extended_thinking.mcp_server import _render_concepts
     pipeline = _get_pipeline()
     concepts = pipeline.store.list_concepts(order_by="frequency", limit=limit)
+
+    print(style.header("concepts", right=f"top {len(concepts)}"))
+    print()
     print(_render_concepts(concepts))
     return 0
 
 
 def cmd_sync() -> int:
     pipeline = _get_pipeline()
+
+    stats = pipeline.store.get_stats()
+    provider = pipeline.provider if hasattr(pipeline, "provider") else None
+    provider_name = getattr(provider, "name", "?") if provider else "?"
+
+    print(style.header("sync", right=provider_name))
+    print()
+
     result = asyncio.run(pipeline.sync())
     total = pipeline.store.get_stats()["total_concepts"]
-    print(f"Synced: {result['chunks_processed']} chunks, +{result['concepts_extracted']} concepts. Total: {total}")
+
+    delta = result["concepts_extracted"]
+    chunks = result["chunks_processed"]
+    status = result.get("status", "synced")
+
+    # Grid: left column = what just happened, right column = graph state
+    grid_rows = [
+        [("chunks", str(chunks)), ("concepts", str(total))],
+        [("+ concepts", f"+{delta}"), ("status", status)],
+    ]
+    enrichment = result.get("enrichment")
+    if enrichment:
+        grid_rows.append([
+            ("+ enriched", str(enrichment.get("knowledge_nodes_created", 0))),
+            ("runs", str(enrichment.get("runs_recorded", 0))),
+        ])
+    print(style.grid(grid_rows))
     return 0
 
 
@@ -80,11 +175,18 @@ def cmd_stats() -> int:
     stats = pipeline.get_stats()
     p = stats["provider"]
     c = stats["concepts"]
-    print(f"Provider: {p.get('detected_provider', p.get('provider', '?'))}")
-    print(f"Memories: {p.get('total_memories', 0)}")
-    print(f"Concepts: {c['total_concepts']}")
-    print(f"Relationships: {c['total_relationships']}")
-    print(f"Wisdoms: {c['total_wisdoms']}")
+
+    provider_name = p.get("detected_provider", p.get("provider", "?"))
+    print(style.header("stats", right=provider_name))
+    print()
+
+    grid_rows = [
+        [("memories", f"{p.get('total_memories', 0):,}"),
+         ("concepts", f"{c['total_concepts']:,}")],
+        [("relationships", f"{c['total_relationships']:,}"),
+         ("wisdoms", f"{c['total_wisdoms']:,}")],
+    ]
+    print(style.grid(grid_rows))
     return 0
 
 
@@ -130,45 +232,49 @@ def _backup(path: Path) -> Path:
     return bak
 
 
-def _patch_client(name: str, path: Path, dry_run: bool = False) -> str:
-    """Register ET in one client's config. Returns a one-line status."""
+def _patch_client(name: str, path: Path, dry_run: bool = False) -> tuple[str, str]:
+    """Register ET in one client's config. Returns (status, detail) for a row()."""
     if not path.exists():
-        return f"  skip    {name:<15} (config not found at {path})"
+        return ("pending", f"{name:<15} config not found")
 
     try:
         data = json.loads(path.read_text())
     except json.JSONDecodeError as e:
-        return f"  ERROR   {name:<15} (invalid JSON: {e})"
+        return ("fail", f"{name:<15} invalid JSON ({e})")
     except OSError as e:
-        return f"  ERROR   {name:<15} (read failed: {e})"
+        return ("fail", f"{name:<15} read failed ({e})")
 
     mcp = data.setdefault("mcpServers", {})
     entry = _mcp_entry()
     existing = mcp.get(MCP_SERVER_KEY)
 
     if existing == entry:
-        return f"  ok      {name:<15} (already registered, no change)"
+        return ("ok", f"{name:<15} already registered")
 
     action = "update" if existing else "add"
     if dry_run:
-        return f"  dry-run {name:<15} (would {action}: {path})"
+        return ("pending", f"{name:<15} would {action}")
 
     bak = _backup(path)
     mcp[MCP_SERVER_KEY] = entry
     path.write_text(json.dumps(data, indent=2) + "\n")
-    return f"  {action:<7} {name:<15} ({path}, backup: {bak.name})"
+    return ("ok", f"{name:<15} {action} ({bak.name})")
 
 
 def cmd_init(dry_run: bool = False) -> int:
-    print(f"Registering '{MCP_SERVER_KEY}' MCP server:")
-    print(f"  command: {sys.executable} -m extended_thinking.mcp_server\n")
+    right = "dry-run" if dry_run else None
+    print(style.header("init", right=right))
+    print(style.subtitle(f"  register {MCP_SERVER_KEY!r} with local MCP clients"))
+    print()
 
     for name, path in _client_configs():
-        print(_patch_client(name, path, dry_run=dry_run))
+        status, detail = _patch_client(name, path, dry_run=dry_run)
+        print(f"  {style.row(status, [detail])}")
 
-    print("\nRestart the client to pick up the new MCP server.")
+    print()
+    print(style.hint("  restart the client to pick up the new MCP server"))
     if dry_run:
-        print("(dry-run: no files were modified)")
+        print(style.hint("  (dry-run: no files were modified)"))
     return 0
 
 
@@ -212,14 +318,7 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main() -> int:
-    parser = _build_parser()
-    args = parser.parse_args()
-
-    if args.cmd is None:
-        parser.print_help()
-        return 1
-
+def _dispatch(args) -> int:
     if args.cmd == "insight":
         return cmd_insight(force=args.force)
     if args.cmd == "concepts":
@@ -256,9 +355,27 @@ def main() -> int:
             return cmd_config_set(args.key, args.value, scope=args.scope)
         if args.config_cmd == "edit":
             return cmd_config_edit(scope=args.scope)
-
-    parser.print_help()
     return 1
+
+
+def main() -> int:
+    parser = _build_parser()
+    args = parser.parse_args()
+
+    if args.cmd is None:
+        parser.print_help()
+        return 1
+
+    # Single place to catch expected, renderable error states. Anything
+    # else bubbles up as a Python traceback (bug, not a UX concern).
+    try:
+        return _dispatch(args)
+    except Exception as exc:
+        from extended_thinking.config.migrate import DataDirConflict
+        if isinstance(exc, DataDirConflict):
+            print(_render_data_dir_conflict(exc), file=sys.stderr)
+            return 2
+        raise
 
 
 if __name__ == "__main__":
