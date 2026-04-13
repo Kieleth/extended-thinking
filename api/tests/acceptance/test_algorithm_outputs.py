@@ -47,9 +47,15 @@ _NO_OP_RUN = {"physarum"}
 def _all_fast_path_algorithms():
     """Yield (name, cls) for every registered algorithm that runs offline AND
     has a meaningful `run()` to snapshot. No-op-run algorithms get dedicated
-    tests (see test_physarum_compute_effective_weight_snapshot)."""
+    tests (see test_physarum_compute_effective_weight_snapshot).
+
+    Enrichment-family plugins (sources, triggers, relevance_gates, cache)
+    implement specialized interfaces from ADR 011 v2 and do not expose a
+    generic `run()`; they are exercised by dedicated enrichment AT."""
     for meta in list_available():
         if meta.name in _EXTERNAL_DEP or meta.name in _NO_OP_RUN:
+            continue
+        if meta.family.startswith("enrichment"):
             continue
         yield meta.name, _alg_registry[meta.name]
 
