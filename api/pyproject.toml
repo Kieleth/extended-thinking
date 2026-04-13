@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "extended-thinking"
-version = "0.1.0"
+version = "0.1.2"
 description = "A pluggable thinking layer for AI-augmented work. Concept extraction, bitemporal knowledge graph, and grounded wisdom synthesis over any memory system."
 readme = "README.md"
 requires-python = ">=3.12"
