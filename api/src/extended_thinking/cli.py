@@ -202,9 +202,17 @@ class _SyncReporter:
         "enrich":  "up",
     }
 
-    # Fingertip pulse during a phase — travels up the intensity ladder
-    # and back. The lit/burn frames carry the orange-red glow.
-    _GLOW_CYCLE = ["spark", "small", "lit", "burn", "lit", "small"]
+    # Fingertip cycle during a phase. Opens with eyes-only ("none"),
+    # the hand materializes ("rest"), then the tip pulses up the
+    # intensity ladder and back. Each phase re-runs this cycle from
+    # the top — "eyes pop, finger reaches, fingertip burns."
+    _GLOW_CYCLE = [
+        "none", "none",            # eyes pop — face only, no hand
+        "rest",                     # hand appears, dim
+        "spark", "small", "lit",    # finger warms
+        "burn",                     # peak glow
+        "lit", "small", "spark",    # fades back
+    ]
 
     # Twitch faces — micro-animations that briefly override the phase
     # face to make ET feel alive. Blinks weighted highest because a
@@ -240,6 +248,9 @@ class _SyncReporter:
             self._active_phase = phase
             self._active_detail = ""
             self._t_phase = self._time.monotonic()
+            # Reset the glow cycle to frame 0 — the "none" state where
+            # ET's eyes pop before the finger reaches out.
+            self._frame = 0
             self._paint_spinner()
         elif event == "tick":
             if self._active_phase != phase:

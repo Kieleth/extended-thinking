@@ -13,6 +13,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from extended_thinking import cli_style as style
 from extended_thinking.config import (
     load_settings,
     user_config_dir,
@@ -21,6 +22,14 @@ from extended_thinking.config import (
     user_secrets_path,
 )
 from extended_thinking.config.loader import find_project_config
+
+
+def _sig(*args, **kwargs) -> None:
+    """Print an ET signature line if stdout is a TTY (non-interactive
+    / piped runs stay clean so `et config get foo` round-trips)."""
+    if sys.stdout.isatty():
+        print()
+        print(style.signature(*args, **kwargs))
 
 
 DEFAULT_CONFIG_TEMPLATE = """\
@@ -129,6 +138,9 @@ def cmd_config_init(force: bool = False) -> int:
         print()
         print("Edit with:  et config edit")
         print("Inspect:    et config show")
+        _sig("open", "rest", note="config scaffolded. edit and go.")
+    else:
+        _sig("blink", "rest", note="config already in place.")
     return 0
 
 
@@ -143,12 +155,20 @@ def cmd_config_path() -> int:
         ("secrets", user_secrets_path()),
     ]
     width = max(len(label) for label, _ in entries)
+    live = 0
     for label, p in entries:
         if p is None:
             print(f"{label:<{width}}  (none found)")
         else:
             marker = "✓" if p.exists() else "·"
             print(f"{label:<{width}}  {marker}  {p}")
+            if p.exists():
+                live += 1
+    if live == 0:
+        _sig("blink", "rest", note="no config files found. run et config init.")
+    else:
+        _sig("look_l", "spark", glowing=True,
+             note=f"{live} source{'s' if live != 1 else ''} live.")
     return 0
 
 
@@ -181,11 +201,13 @@ def cmd_config_show(format: str = "toml", show_secrets: bool = False) -> int:
 
     if format == "json":
         print(json.dumps(data, indent=2))
+        _sig("narrow", "rest", note="json view.")
         return 0
 
     # Default: minimal TOML-ish rendering (nested tables, scalars, lists).
     # We avoid a tomli_w dependency; this output is read-only anyway.
     print(_render_toml(data))
+    _sig("narrow", "rest", note="effective config.")
     return 0
 
 
@@ -226,11 +248,20 @@ def cmd_config_validate() -> int:
     except ValidationError as e:
         print("config validation failed:", file=sys.stderr)
         print(e, file=sys.stderr)
+        if sys.stderr.isatty():
+            print(style.signature("wink_l", "rest",
+                                  note="something's off. fix and re-run."),
+                  file=sys.stderr)
         return 2
     except RuntimeError as e:
         print(str(e), file=sys.stderr)
+        if sys.stderr.isatty():
+            print(style.signature("wink_l", "rest",
+                                  note="something's off. fix and re-run."),
+                  file=sys.stderr)
         return 2
     print("config ok")
+    _sig("open", "spark", glowing=True, note="config clean.")
     return 0
 
 

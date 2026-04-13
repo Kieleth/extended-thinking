@@ -98,9 +98,14 @@ class TestSpriteRendering:
         w = _cell_width(sprite)
         l, mid, r = HANDS[hand]
         hand_w = _cell_width(f"{l}{mid}{r}")
-        assert w == 3 + 1 + hand_w, (
+        if hand_w == 0:
+            # "none" hand — face only, no separator.
+            expected = 3
+        else:
+            expected = 3 + 1 + hand_w
+        assert w == expected, (
             f"mascot({face!r}, {hand!r}) = {sprite!r}, got {w} cells, "
-            f"expected {3 + 1 + hand_w}"
+            f"expected {expected}"
         )
 
     @pytest.mark.parametrize("face", list(FACES.keys()))

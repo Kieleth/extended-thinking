@@ -158,6 +158,7 @@ class Pipeline:
         # Store chunks in VectorStore for semantic retrieval
         if self._vectors is not None:
             _start("index")
+            import asyncio as _asyncio
             for i, chunk in enumerate(chunks, 1):
                 self._vectors.add(
                     id=chunk.id,
@@ -173,10 +174,13 @@ class Pipeline:
                         ),
                     },
                 )
-                # Tick every 5 chunks so the reporter has fresh state for
-                # its 80ms redraw loop; cheap (just updates a variable).
+                # Tick every 5 chunks + yield to the event loop so the
+                # CLI's spinner task gets scheduled and can redraw. Without
+                # the yield, this purely-sync loop hogs the loop and ET
+                # freezes on the first frame of the phase.
                 if i % 5 == 0 or i == len(chunks):
                     _tick("index", f"{i}/{len(chunks)}")
+                    await _asyncio.sleep(0)
             _progress("index", f"{len(chunks)} embeddings")
 
         # ADR 013 C8: providers returning structured data can skip extraction.
@@ -316,6 +320,11 @@ class Pipeline:
                 concepts_seen += 1
                 if total_concepts and (concepts_seen % 5 == 0 or concepts_seen == total_concepts):
                     _tick("resolve", f"{concepts_seen}/{total_concepts}")
+                    # Yield to the event loop — the resolution inner loop
+                    # is purely synchronous (Kuzu queries, in-process) so
+                    # without this the spinner freezes on its first frame.
+                    import asyncio as _asyncio
+                    await _asyncio.sleep(0)
 
         if extract_enabled and (merge_count or new_count):
             _progress(
@@ -340,8 +349,11 @@ class Pipeline:
         n_rels_before = self._store.get_stats().get("total_relationships", 0)
         if all_chunk_batches:
             _start("relate")
+        import asyncio as _asyncio
         for batch_chunks, batch_concepts in all_chunk_batches:
             self._detect_relationships(batch_chunks, batch_concepts)
+            # Yield per batch so the spinner animates during long runs.
+            await _asyncio.sleep(0)
         n_rels_after = self._store.get_stats().get("total_relationships", 0)
         rel_delta = n_rels_after - n_rels_before
         if rel_delta:

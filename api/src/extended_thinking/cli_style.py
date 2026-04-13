@@ -100,7 +100,10 @@ FACES = {
 # Hand states (one-line sprites — used by et reset, mood footer, etc.)
 # The outer `╭╮` is structural (always dim); the inner glyph, when
 # present, is the glowing fingertip — red in phone-home mode.
+# `none` hides the hand entirely — the phase-opening frame where only
+# eyes are visible, before the finger reaches out.
 HANDS = {
+    "none":       ("",  "",  ""),    # no hand at all — eyes pop
     "rest":       ("╭", "",  "╮"),   # no glow
     "spark":      ("╭", "·", "╮"),   # warming up
     "small":      ("╭", "•", "╮"),
@@ -139,6 +142,10 @@ def mascot(face: str = "open", hand: str = "rest", *, glowing: bool = False) -> 
     glyph red; otherwise the whole hand is dim."""
     f = FACES.get(face, FACES["open"])
     l, mid, r = HANDS.get(hand, HANDS["rest"])
+    # "none" hand: hide the hand entirely so only the face shows. Lets
+    # the phase-open animation pop the eyes before the finger reaches.
+    if not (l or mid or r):
+        return f
     if glowing and mid:
         hand_str = f"{dim(l)}{red_tone(mid)}{dim(r)}"
     else:
