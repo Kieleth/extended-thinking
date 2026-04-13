@@ -87,16 +87,21 @@ def _render_data_dir_conflict(exc) -> str:
         f"  {style.dim('legacy')}  {legacy_str:<{path_w}}  {legacy_size:>8}",
         f"  {style.dim('xdg')}     {xdg_str:<{path_w}}  {xdg_size:>8}",
     ]
-    return style.notice(
-        "two data directories hold data. merge manually before continuing.",
-        *rows,
-        "",
-        "to merge legacy into xdg:",
-        f"  {style.dim('$')} rsync -a {legacy_str}/ {xdg_str}/",
-        f"  {style.dim('$')} rm -rf {legacy_str}",
-        "",
-        "or keep one, remove the other, and run et sync again.",
-        tone="warn",
+    # ET looking sideways-confused for conflict states.
+    sprite = style.mascot("wink_l", "rest")
+    return (
+        f"  {sprite}\n"
+        + style.notice(
+            "two data directories hold data. merge manually before continuing.",
+            *rows,
+            "",
+            "to merge legacy into xdg:",
+            f"  {style.dim('$')} rsync -a {legacy_str}/ {xdg_str}/",
+            f"  {style.dim('$')} rm -rf {legacy_str}",
+            "",
+            "or keep one, remove the other, and run et sync again.",
+            tone="warn",
+        )
     )
 
 
@@ -142,20 +147,16 @@ def cmd_concepts(limit: int = 20) -> int:
 class _SyncReporter:
     """Live phase reporter for `Pipeline.sync(on_progress=...)`.
 
-    Receives start / tick / done events and renders each phase as:
+    Each phase gets its own ET face; the fingertip pulses as the
+    spinner frame. The sprite replaces the Braille spinner entirely —
+    the reach of the finger (and colour of the glow) is the liveness
+    indicator.
 
-        ⠋  extracting concepts     batch 2/4 · haiku
+        ◔‿◔ ╭●╮  extracting concepts     batch 2/4 · haiku
 
-    …with the spinner char rotating every ~80ms while the phase is
-    active. On `done`, the line finalizes to:
-
-        ·  extracting concepts     34 concepts · 4 batches · haiku   8.2s
-
-    and a fresh spinner spawns below for the next phase. Unix semantics
-    hold — piped output skips ANSI and prints completion lines only.
-
-    Labels are deliberately human: `reading provider`, not `read`. The
-    pipeline emits the short phase-id; the reporter provides the copy.
+    On phase-done the line finalizes to the dim `· label detail 1.4s`
+    form and a new sprite spawns for the next phase. Unix semantics —
+    piped output skips ANSI and prints completion lines only.
     """
 
     _LABELS = {
@@ -168,9 +169,24 @@ class _SyncReporter:
         "enrich":  "enriching with knowledge",
     }
 
-    # Braille spinner — Classical cli vocabulary (cargo, npm, oil).
-    # Looks kinetic at 80ms frame intervals without getting in the way.
-    _FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+    # Each phase gets a face that matches what ET's doing. `extract` is
+    # the longest + most Haiku-heavy, so ET narrows his eyes in focus.
+    # `enrich` reaches outward, so ET looks up. Other phases are the
+    # left/right scanning pattern.
+    _PHASE_FACES = {
+        "read":    "open",
+        "filter":  "look_l",
+        "index":   "look_r",
+        "extract": "narrow",
+        "resolve": "look_l",
+        "relate":  "look_r",
+        "enrich":  "up",
+    }
+
+    # Fingertip pulse during a phase — travels up the intensity ladder
+    # and back. The lit/burn frames carry red; the whole loop is the
+    # spinner replacement.
+    _GLOW_CYCLE = ["spark", "small", "lit", "burn", "lit", "small"]
 
     def __init__(self):
         import time
@@ -218,10 +234,12 @@ class _SyncReporter:
         if self._active_phase is None:
             return
         label = self._LABELS.get(self._active_phase, self._active_phase)
-        frame = self._FRAMES[self._frame % len(self._FRAMES)]
+        face = self._PHASE_FACES.get(self._active_phase, "open")
+        hand = self._GLOW_CYCLE[self._frame % len(self._GLOW_CYCLE)]
+        sprite = style.mascot(face, hand, glowing=True)
         detail = self._active_detail or "…"
         line = (
-            f"  {style.accent(frame)}  "
+            f"  {sprite}  "
             f"{label:<{self._label_w + 2}}"
             f"{style.dim(detail)}"
         )
@@ -237,8 +255,11 @@ class _SyncReporter:
         now = self._time.monotonic()
         elapsed = now - self._t_phase
         label = self._LABELS.get(self._active_phase, self._active_phase)
+        # Finalize with ET at rest and a static lit tip — phase got to
+        # the target, fingertip confirms contact, then relaxes.
+        sprite = style.mascot("open", "lit", glowing=True)
         line = (
-            f"  {style.dim('·')}  "
+            f"  {sprite}  "
             f"{label:<{self._label_w + 2}}"
             f"{detail:<42}"
             f"{style.dim(f'{elapsed:>5.1f}s')}"
@@ -486,7 +507,27 @@ def cmd_sync(yes: bool = False) -> int:
         ])
     grid_rows.append([("elapsed", f"{total_time:.1f}s"), ("", "")])
     print(style.grid(grid_rows))
+
+    # Mood signature: ET's face + hand intensity scale with how much
+    # just happened. Zero new concepts → bored ET with resting hand.
+    # Small haul → curious. Big haul → wide-eyed + finger burning.
+    mood = _sync_mood(delta, enrichment)
+    print()
+    print(f"  {mood}")
     return 0
+
+
+def _sync_mood(delta: int, enrichment: dict | None) -> str:
+    """One-line mascot signature encoding the size of the sync delta."""
+    if delta == 0 and not enrichment:
+        # Nothing new. ET closes his eyes. No phone-home.
+        return style.mascot("blink", "rest") + f"  {style.dim('nothing new.')}"
+    if delta < 5:
+        return style.mascot("open", "spark", glowing=True) + f"  {style.dim('a few new concepts.')}"
+    if delta < 20:
+        return style.mascot("open", "lit", glowing=True) + f"  {style.dim('signal received.')}"
+    # Big haul — eyes widen, finger burns. Something actually happened.
+    return style.mascot("narrow", "burn", glowing=True) + f"  {style.dim('big haul. phoning home.')}"
 
 
 async def _run_sync_with_reporter(pipeline):
@@ -600,22 +641,27 @@ def cmd_reset(go_home: bool = False) -> int:
         ))
         return 0
 
-    # Real deletion.
+    # Real deletion. ET's face fades through half-closed to closed as
+    # each location gets wiped — "going home" rendered in three frames.
+    fade_faces = ["open", "narrow", "blink"]
     failures: list[str] = []
-    for label, path, size in present:
+    for i, (label, path, size) in enumerate(present):
+        face_key = fade_faces[min(i, len(fade_faces) - 1)]
+        sprite = style.mascot(face_key, "rest")
         try:
             shutil.rmtree(path)
-            print(f"  {style.row('ok', [f'{label:<10}  removed  ({_humanize_bytes(size)})'])}")
+            print(f"  {sprite}  {style.ok_tone('✓')}  {label:<10}  removed  ({_humanize_bytes(size)})")
         except OSError as e:
             failures.append(f"{label}: {e}")
-            print(f"  {style.row('fail', [f'{label:<10}  {e}'])}")
+            print(f"  {sprite}  {style.err_tone('✗')}  {label:<10}  {e}")
 
     print()
     if failures:
         print(style.hint(f"  {len(failures)} location{'s' if len(failures) != 1 else ''} could not be removed; see above"))
         return 1
 
-    print(style.hint("  clean slate. run et sync to start over."))
+    # Final frame — ET fully home, eyes closed.
+    print(f"  {style.mascot('blink', 'rest')}  {style.dim('clean slate. run et sync to start over.')}")
     return 0
 
 

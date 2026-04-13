@@ -40,6 +40,7 @@ _ACCENT = "\033[38;5;80m"   # muted cyan — ET's signature, header only
 _WARN = "\033[38;5;179m"    # soft amber for non-fatal notices
 _ERR = "\033[38;5;167m"     # muted rose for hard errors
 _OK = "\033[38;5;107m"      # muted moss for ✓ / success markers
+_RED = "\033[38;5;196m"     # ET's fingertip glow — phone-home mode only
 
 
 def _tty() -> bool:
@@ -73,6 +74,108 @@ def err_tone(text: str) -> str:
 
 def ok_tone(text: str) -> str:
     return _sgr(_OK, text)
+
+
+def red_tone(text: str) -> str:
+    """ET's fingertip red. Reserved for the phone-home glow."""
+    return _sgr(_RED, text)
+
+
+# ── ET mascot ────────────────────────────────────────────────────────
+# One-character-wide sprite. Eyes are fixed; expressions and hand state
+# are composed from small frame vocabularies. Rendered inline, always
+# with the accent-cyan `et` to its right.
+
+FACES = {
+    "open":    "◉‿◉",   # default, eyes wide
+    "blink":   "⁃‿⁃",   # both eyes closed
+    "wink_l":  "-‿◉",   # left eye closed
+    "wink_r":  "◉‿-",   # right eye closed
+    "look_l":  "◐‿◐",   # both looking left
+    "look_r":  "◑‿◑",   # both looking right
+    "narrow":  "◔‿◔",   # squinting, focused
+    "up":      "◓‿◓",   # looking up
+}
+
+# Hand states — ring of curly brackets, optionally with a glow glyph
+# between them. The outer `╭╮` is structural (always dim); the inner
+# glyph, when present, is the glowing fingertip — red in phone-home mode.
+HANDS = {
+    "rest":       ("╭", "",  "╮"),   # no glow
+    "spark":      ("╭", "·", "╮"),   # warming up
+    "small":      ("╭", "•", "╮"),
+    "lit":        ("╭", "●", "╮"),
+    "burn":       ("╭", "⦿", "╮"),   # peak
+}
+
+
+def mascot(face: str = "open", hand: str = "rest", *, glowing: bool = False) -> str:
+    """Compose a mascot sprite. `glowing=True` turns the inner hand
+    glyph red; otherwise the whole hand is dim."""
+    f = FACES.get(face, FACES["open"])
+    l, mid, r = HANDS.get(hand, HANDS["rest"])
+    if glowing and mid:
+        hand_str = f"{dim(l)}{red_tone(mid)}{dim(r)}"
+    else:
+        hand_str = dim(f"{l}{mid}{r}")
+    return f"{f} {hand_str}"
+
+
+# Named animation scripts. Each entry is a list of (face, hand, glowing)
+# frame tuples. Used by `et mascot` for the live reel.
+ANIMATIONS: dict[str, list[tuple[str, str, bool]]] = {
+    "idle": [
+        ("open", "rest", False),
+    ],
+    "blink": [
+        ("open", "rest", False),
+        ("open", "rest", False),
+        ("open", "rest", False),
+        ("blink", "rest", False),
+        ("open", "rest", False),
+    ],
+    "wink": [
+        ("open", "rest", False),
+        ("open", "rest", False),
+        ("wink_l", "rest", False),
+        ("open", "rest", False),
+    ],
+    "look around": [
+        ("open", "rest", False),
+        ("look_l", "rest", False),
+        ("look_l", "rest", False),
+        ("open", "rest", False),
+        ("look_r", "rest", False),
+        ("look_r", "rest", False),
+        ("open", "rest", False),
+    ],
+    "phone home": [
+        ("open", "rest", False),
+        ("open", "spark", True),
+        ("open", "small", True),
+        ("open", "lit", True),
+        ("open", "burn", True),
+        ("open", "lit", True),
+        ("open", "small", True),
+        ("open", "spark", True),
+    ],
+    "burn steady": [
+        ("open", "lit", True),
+    ],
+    "focus + burn": [
+        ("narrow", "lit", True),
+        ("narrow", "burn", True),
+        ("narrow", "lit", True),
+    ],
+    "look up at work": [
+        ("up", "spark", True),
+        ("up", "small", True),
+        ("up", "lit", True),
+        ("up", "burn", True),
+        ("up", "lit", True),
+        ("up", "small", True),
+    ],
+}
 
 
 # ── Width ────────────────────────────────────────────────────────────
