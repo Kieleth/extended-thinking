@@ -263,11 +263,17 @@ class _SyncReporter:
 
 
 def _confirm_sources(pipeline, assume_yes: bool) -> bool:
-    """Show detected sources before sync runs; ask to proceed.
+    """Show detected sources before sync runs; interactively pick which
+    participate.
 
-    Returns True to proceed, False to bail. AutoProvider's sub-providers
-    each carry `name` + `get_stats()`; we render one row per provider
-    with its memory count. Non-AutoProviders render as a single row.
+    Returns True to proceed, False to bail. Mutates
+    `pipeline.provider._providers` in place to reflect the user's
+    selection — ephemeral to this command run; persistent toggles live
+    in `[providers.<name>].enabled` (ADR 012).
+
+    AutoProvider's sub-providers each carry `name` + `get_stats()`;
+    one row per provider with its memory count. Non-AutoProviders
+    render as a single row and skip the picker (nothing to pick).
     """
     provider = pipeline.provider
     sub = getattr(provider, "_providers", None)
@@ -286,26 +292,133 @@ def _confirm_sources(pipeline, assume_yes: bool) -> bool:
         print(style.notice("no providers detected. configure one in ~/.config/extended-thinking/config.toml.", tone="warn"))
         return False
 
-    label_w = max(len(r[0]) for r in rows)
-    path_w = max(len(r[1]) for r in rows)
     print(f"  {style.dim('found')}  {len(rows)} source{'s' if len(rows) != 1 else ''}:")
     print()
-    for name, path, count in rows:
-        print(f"    {name:<{label_w}}   {style.dim(path):<{path_w}}   {count}")
-    print()
 
-    if assume_yes or not sys.stdout.isatty():
+    # Static path: --yes or non-TTY. Just list + proceed.
+    if assume_yes or not sys.stdout.isatty() or not sys.stdin.isatty():
+        label_w = max(len(r[0]) for r in rows)
+        path_w = max(len(r[1]) for r in rows)
+        for name, path, count in rows:
+            print(f"    {style.ok_tone('✓')}  {name:<{label_w}}   {style.dim(path):<{path_w}}   {count}")
+        print()
         print(style.hint("  proceeding (--yes)" if assume_yes else "  proceeding (non-interactive)"))
         print()
         return True
 
-    try:
-        answer = input(f"  {style.dim('proceed?')} [Y/n] ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
+    # Interactive path: arrow-key selector. Only meaningful when sub is a
+    # list we can filter; single-provider case skips the picker.
+    if sub is None:
+        print(f"    {style.ok_tone('✓')}  {rows[0][0]}   {style.dim(rows[0][1])}   {rows[0][2]}")
         print()
+        try:
+            answer = input(f"  {style.dim('proceed?')} [Y/n] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return False
+        print()
+        return answer in ("", "y", "yes")
+
+    selected = _interactive_source_picker(rows)
+    if selected is None:
         return False
+
+    # Apply selection: filter sub-providers in place.
+    if not any(selected):
+        print(style.notice("no sources selected. nothing to sync.", tone="warn"))
+        return False
+
+    original = list(sub)
+    sub[:] = [p for p, keep in zip(original, selected) if keep]
     print()
-    return answer in ("", "y", "yes")
+    return True
+
+
+def _interactive_source_picker(rows) -> list[bool] | None:
+    """Arrow-key multi-select. Returns list[bool] of kept rows, or None.
+
+    Pure stdlib: tty.setraw + termios. Unix only (posix). The caller
+    should only invoke this when both stdin and stdout are TTYs.
+
+    Keys:
+      ↑/↓   move cursor
+      space toggle current row
+      a     select all
+      n     select none
+      enter proceed with the current selection
+      q     cancel (returns None)
+    """
+    import termios
+    import tty
+
+    n = len(rows)
+    cursor = 0
+    selected = [True] * n
+    label_w = max(len(r[0]) for r in rows)
+    path_w = max(len(r[1]) for r in rows)
+
+    def frame() -> list[str]:
+        lines = []
+        for i, (label, path, count) in enumerate(rows):
+            pointer = style.accent("▸") if i == cursor else " "
+            mark = style.ok_tone("✓") if selected[i] else style.dim("·")
+            lines.append(
+                f"    {pointer}  [{mark}]  {label:<{label_w}}   "
+                f"{style.dim(path):<{path_w}}   {count}"
+            )
+        lines.append("")
+        lines.append(
+            "    " + style.dim(
+                "↑/↓ move   space toggle   a all   n none   enter proceed   q cancel"
+            )
+        )
+        return lines
+
+    # Initial paint.
+    lines = frame()
+    for line in lines:
+        print(line)
+    sys.stdout.write("\033[?25l")  # hide cursor
+    sys.stdout.flush()
+
+    fd = sys.stdin.fileno()
+    old_attrs = termios.tcgetattr(fd)
+    try:
+        tty.setraw(fd)
+        while True:
+            ch = sys.stdin.read(1)
+            if ch == "\x1b":  # ESC → arrow key sequence
+                seq = sys.stdin.read(2)
+                if seq == "[A":
+                    cursor = (cursor - 1) % n
+                elif seq == "[B":
+                    cursor = (cursor + 1) % n
+                else:
+                    continue
+            elif ch in ("\r", "\n"):
+                break
+            elif ch == " ":
+                selected[cursor] = not selected[cursor]
+            elif ch in ("a", "A"):
+                selected = [True] * n
+            elif ch in ("n", "N"):
+                selected = [False] * n
+            elif ch in ("q", "Q", "\x03"):  # q or Ctrl+C
+                return None
+            else:
+                continue
+
+            # Redraw: move cursor up to the top of the block and rewrite.
+            sys.stdout.write(f"\033[{len(lines)}A")
+            for line in frame():
+                sys.stdout.write(f"\r\033[K{line}\n")
+            sys.stdout.flush()
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_attrs)
+        sys.stdout.write("\033[?25h")  # show cursor
+        sys.stdout.flush()
+
+    return selected
 
 
 def _describe_provider_path(p) -> str:
