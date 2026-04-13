@@ -147,16 +147,19 @@ def cmd_concepts(limit: int = 20) -> int:
 class _SyncReporter:
     """Live phase reporter for `Pipeline.sync(on_progress=...)`.
 
-    Each phase gets its own ET face; the fingertip pulses as the
-    spinner frame. The sprite replaces the Braille spinner entirely —
-    the reach of the finger (and colour of the glow) is the liveness
-    indicator.
+    One live ET sprite walks through the phases. Completed phases
+    print above him as plain `· label detail 1.4s` rows; ET stays at
+    the bottom, his face and fingertip matching whatever phase is
+    currently active. When a phase ends, his line is overwritten with
+    the completion row (+ newline), and a fresh live line is drawn
+    below for the next phase.
 
-        ◔‿◔ ╭●╮  extracting concepts     batch 2/4 · haiku
+        · reading provider          67 chunks                   1.8s
+        · filtering content         67 thinking                 0.0s
+        ◔‿◔ ╭●╮  extracting concepts     batch 2/4 · haiku      ← live ET
 
-    On phase-done the line finalizes to the dim `· label detail 1.4s`
-    form and a new sprite spawns for the next phase. Unix semantics —
-    piped output skips ANSI and prints completion lines only.
+    One ET, walking down the transcript. Unix semantics — piped
+    output skips ANSI and prints only the completion rows.
     """
 
     _LABELS = {
@@ -231,7 +234,14 @@ class _SyncReporter:
     # ── Rendering ─────────────────────────────────────────────────────
 
     def _paint_spinner(self) -> None:
-        if self._active_phase is None:
+        """Draw ET's live line at the current cursor row (no newline).
+
+        This is the sprite that animates in place. Called at every
+        spinner tick and on every event that might change the active
+        phase or its detail. The line is always one row tall; \r +
+        clear-to-EOL handles the redraw.
+        """
+        if self._active_phase is None or not self._tty:
             return
         label = self._LABELS.get(self._active_phase, self._active_phase)
         face = self._PHASE_FACES.get(self._active_phase, "open")
@@ -243,28 +253,27 @@ class _SyncReporter:
             f"{label:<{self._label_w + 2}}"
             f"{style.dim(detail)}"
         )
-        if self._tty:
-            # \r returns to column 0; \033[K clears to end of line so stale
-            # chars from a longer previous detail don't bleed through.
-            sys.stdout.write(f"\r{line}\033[K")
-            sys.stdout.flush()
+        sys.stdout.write(f"\r{line}\033[K")
+        sys.stdout.flush()
 
     def _finalize(self, detail: str) -> None:
+        """End the active phase. Overwrite ET's live line with a
+        plain `· label detail elapsed` completion row followed by a
+        newline, so ET's next appearance renders below it."""
         if self._active_phase is None:
             return
         now = self._time.monotonic()
         elapsed = now - self._t_phase
         label = self._LABELS.get(self._active_phase, self._active_phase)
-        # Finalize with ET at rest and a static lit tip — phase got to
-        # the target, fingertip confirms contact, then relaxes.
-        sprite = style.mascot("open", "lit", glowing=True)
         line = (
-            f"  {sprite}  "
+            f"  {style.dim('·')}  "
             f"{label:<{self._label_w + 2}}"
             f"{detail:<42}"
             f"{style.dim(f'{elapsed:>5.1f}s')}"
         )
         if self._tty:
+            # \r + clear the live ET line, print the completion + \n —
+            # cursor lands on a fresh row ready for the next phase's ET.
             sys.stdout.write(f"\r{line}\033[K\n")
             sys.stdout.flush()
         else:
