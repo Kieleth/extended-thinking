@@ -71,6 +71,31 @@ class MempalaceProviderConfig(BaseModel):
     enabled: bool = True
 
 
+class ProjectsProviderConfig(BaseModel):
+    """Recursive project-meta scanner.
+
+    For each root in `roots`, walks the tree looking for files matching
+    `patterns`. By default only ingests files inside a git repo
+    (require_git=True). Each project (the nearest enclosing git root)
+    becomes its own namespace: `memory:project:<repo-basename>`.
+
+    Defaults to disabled so existing installs don't suddenly index
+    every .md under ~/Projects. Opt in via config or `et wizard`.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool = False
+    roots: list[Path] = Field(default_factory=list)
+    patterns: list[str] = Field(default_factory=lambda: [
+        "CLAUDE.md",
+        "AGENTS.md",
+        "README.md",
+        "docs/**/*.md",
+    ])
+    require_git: bool = True
+    max_files_per_project: int = 50
+
+
 class ProvidersConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     claude_code: ClaudeCodeProviderConfig = Field(default_factory=ClaudeCodeProviderConfig)
@@ -80,6 +105,7 @@ class ProvidersConfig(BaseModel):
     folder: FolderProviderConfig = Field(default_factory=FolderProviderConfig)
     generic_openai_chat: GenericOpenaiChatProviderConfig = Field(default_factory=GenericOpenaiChatProviderConfig)
     mempalace: MempalaceProviderConfig = Field(default_factory=MempalaceProviderConfig)
+    projects: ProjectsProviderConfig = Field(default_factory=ProjectsProviderConfig)
 
 
 class ExtractionConfig(BaseModel):

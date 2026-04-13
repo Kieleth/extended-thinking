@@ -2,7 +2,9 @@
 """Extended-thinking CLI.
 
 Usage:
-  et insight              # sync + generate wisdom
+  et wizard               # interactive first-run setup (start here)
+  et doctor               # top-to-bottom health check
+  et insight              # sync + generate noticing
   et concepts             # list concepts
   et sync                 # pull from provider
   et stats                # show stats

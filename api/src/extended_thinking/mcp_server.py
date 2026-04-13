@@ -125,7 +125,21 @@ def _render_insight(wisdom: dict, concepts: list[dict], store=None) -> str:
             lines.extend(_render_audit_row(r, store))
             lines.append("")
         if lines[-1] == "":
-            lines.pop()  # trim trailing blank before the action
+            lines.pop()  # trim trailing blank before the reading / action
+
+    # Reading list: enrichment KnowledgeNodes attached to the cited concepts.
+    # Shown only when enrichment has actually produced material (ADR 011)
+    # — grounds the noticing in external canon without forcing it.
+    reading = _collect_reading(related, store)
+    if reading:
+        lines.append("")
+        lines.append(f"  {style.dim('some reading:')}")
+        lines.append("")
+        for row in reading:
+            lines.extend(row)
+            lines.append("")
+        if lines[-1] == "":
+            lines.pop()
 
     if action_text:
         lines.append("")
@@ -133,6 +147,59 @@ def _render_insight(wisdom: dict, concepts: list[dict], store=None) -> str:
             lines.append(f"  {style.dim(al)}")
 
     return "\n".join(lines)
+
+
+def _collect_reading(related: list[dict], store) -> list[list[str]]:
+    """Fetch enrichment KnowledgeNodes attached to the cited concepts.
+
+    Returns up to ~5 reading rows (across all concepts). Each row is a
+    list of lines:
+      <source_kind>  <title>
+      <url>
+    """
+    from extended_thinking import cli_style as style
+
+    if store is None or not hasattr(store, "_query_all"):
+        return []
+
+    ids = [r["id"] for r in related if r.get("id")]
+    if not ids:
+        return []
+
+    # Batch query — all enrichments for any of the cited concepts,
+    # ordered by relevance descending. Duplicates (same KN attached to
+    # multiple concepts) collapse via a seen-set below.
+    rows = []
+    try:
+        rows = store._query_all(
+            "MATCH (c:Concept)-[r:Enriches]->(k:KnowledgeNode) "
+            "WHERE c.id IN $ids "
+            "AND (k.t_expired IS NULL OR k.t_expired = '') "
+            "RETURN k.id, k.source_kind, k.title, k.url, r.relevance "
+            "ORDER BY r.relevance DESC LIMIT 12",
+            {"ids": ids},
+        )
+    except Exception:  # noqa: BLE001
+        return []
+
+    reading: list[list[str]] = []
+    seen: set[str] = set()
+    for k_id, source_kind, title, url, _relevance in rows:
+        if k_id in seen or not title:
+            continue
+        seen.add(k_id)
+        kind = source_kind or "link"
+        # Row 1: "wikipedia  Gödel's incompleteness theorems"
+        # Row 2: dim URL
+        block: list[str] = [
+            f"    {style.dim('·')} {style.dim(f'[{kind}]')} {title}",
+        ]
+        if url:
+            block.append(f"      {style.dim(url)}")
+        reading.append(block)
+        if len(reading) >= 5:
+            break
+    return reading
 
 
 def _render_audit_row(concept: dict, store) -> list[str]:

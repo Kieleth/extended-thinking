@@ -743,7 +743,7 @@ Voice rules:
 - **One sentence for the noticing.** That's the title. If it needs two sentences, you haven't found the noticing yet.
 - **One paragraph for the why.** Explain what you saw. Reference how these concepts cluster, what threads them. Speak TO the user, not about them.
 - **No imperative voice in the noticing itself.** Don't say "you should" or "consider X". The noticing is observation, not advice.
-- **Action is OPTIONAL.** Only include an `action` field if there's one specific small thing that falls naturally out of the noticing AND it isn't a code spec. "Maybe write down what you'd want from X" beats "implement Y with fields A, B, C". If no action fits, omit the field entirely or set it to empty string.
+- **Action as gentle invitation, not imperative.** Include an `action` field when there's one small thing they could try that follows naturally from the noticing. Frame it as a question or offer, never as a command. Good: "would you try writing the one-paragraph version of this and seeing if it still reads clean?" Bad: "Implement the one-paragraph version with fields A, B, C." Better absent than forced. Open with "would you", "maybe try", "what about", or "worth", never "implement", "add", "build", "refactor".
 
 Return JSON:
 ```json

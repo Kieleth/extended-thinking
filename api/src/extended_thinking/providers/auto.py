@@ -259,6 +259,23 @@ class AutoProvider:
                         logger.info("AutoProvider: detected folder %s", folder)
                     break
 
+        # Projects. Recursively harvests CLAUDE.md / AGENTS.md / READMEs
+        # under configured roots, gated on .git presence. Each project
+        # gets its own `memory:project:<name>` namespace.
+        projects_cfg = getattr(pc, "projects", None)
+        if projects_cfg is not None and projects_cfg.enabled and projects_cfg.roots:
+            from extended_thinking.providers.projects import ProjectsProvider
+            self._providers.append(ProjectsProvider(
+                roots=list(projects_cfg.roots),
+                patterns=list(projects_cfg.patterns),
+                require_git=projects_cfg.require_git,
+                max_files_per_project=projects_cfg.max_files_per_project,
+            ))
+            logger.info(
+                "AutoProvider: configured projects over roots %s",
+                projects_cfg.roots,
+            )
+
         if not self._providers:
             logger.info("AutoProvider: no data sources found")
 

@@ -73,6 +73,55 @@ class DuplicateGraphStoreError(RuntimeError):
         )
 
 
+class SchemaDriftError(RuntimeError):
+    """Raised by `GraphStore.check_schema()` when a populated DB is
+    about to be opened with an ontology that adds new tables.
+
+    `CREATE TABLE IF NOT EXISTS` runs an online migration for the new
+    tables, which is safe in isolation but dangerous when other code
+    paths are writing. For production databases the fail-fast path is
+    strictly safer: stop, inspect the drift, migrate deliberately.
+    """
+
+    def __init__(self, *, db_path: Path, missing_tables: list[str],
+                 existing_count: int):
+        self.db_path = db_path
+        self.missing_tables = missing_tables
+        self.existing_count = existing_count
+        tbl_list = ", ".join(missing_tables)
+        super().__init__(
+            f"schema drift at {db_path!s}: the expected ontology includes "
+            f"{len(missing_tables)} table{'s' if len(missing_tables) != 1 else ''} "
+            f"not in the database ({tbl_list}). DB currently holds "
+            f"{existing_count} table{'s' if existing_count != 1 else ''}. "
+            "Online migration via CREATE TABLE IF NOT EXISTS is unsafe on a "
+            "populated DB with concurrent writers — rebuild from source or "
+            "migrate offline before reopening."
+        )
+
+
+def _extract_table_names(ddl_statements) -> set[str]:
+    """Pull the table names out of a sequence of CREATE NODE/REL TABLE
+    statements. Used by `GraphStore.check_schema` to diff the ontology
+    against what's currently in the Kuzu file.
+
+    Matches both `CREATE NODE TABLE Name (...)` and `CREATE NODE TABLE
+    IF NOT EXISTS Name (...)`; same for REL TABLE and REL TABLE GROUP.
+    Returns the set of table names it found.
+    """
+    import re
+    pattern = re.compile(
+        r"CREATE\s+(?:NODE|REL)\s+TABLE(?:\s+GROUP)?"
+        r"(?:\s+IF\s+NOT\s+EXISTS)?\s+([A-Za-z_][A-Za-z0-9_]*)",
+        re.IGNORECASE,
+    )
+    names: set[str] = set()
+    for stmt in ddl_statements:
+        for match in pattern.finditer(stmt):
+            names.add(match.group(1))
+    return names
+
+
 def _register_live(path: Path, store: "GraphStore") -> str:
     """Add a store to the registry. Returns the resolved-path key used.
 
@@ -195,6 +244,59 @@ class GraphStore:
         IF NOT EXISTS — safe to call against an existing database."""
         for stmt in self._ontology.ddl:
             self._exec_safe(stmt)
+
+    # ── Schema drift detection (R11 follow-up) ────────────────────────
+
+    def check_schema(self, expected_ontology=None) -> None:
+        """Fail-fast if a populated DB is about to migrate online.
+
+        Compares the live Kuzu DB's tables against `expected_ontology`
+        (or this GraphStore's own if omitted). Three outcomes:
+
+        - Empty DB → no-op. First-time initialization will create the
+          tables via `_apply_ontology`; no corruption risk.
+        - DB matches the ontology → silent. No drift.
+        - DB is populated AND the ontology adds tables not present
+          yet → raise `SchemaDriftError` listing them. Caller decides
+          whether to migrate deliberately or abort.
+
+        Missing tables in the ontology (DB has something the ontology
+        doesn't declare) are NOT flagged — that's a backwards-compat
+        case where a consumer uses a smaller ontology than what the
+        DB was created with.
+        """
+        from extended_thinking.storage.ontology import Ontology  # noqa: F401
+        ontology = expected_ontology or self._ontology
+
+        existing = self._list_live_tables()
+        if not existing:
+            # Empty DB — first-time init. Any ontology is fine.
+            return
+
+        expected = _extract_table_names(ontology.ddl)
+        missing = sorted(expected - existing)
+        if missing:
+            raise SchemaDriftError(
+                db_path=self._db_path,
+                missing_tables=missing,
+                existing_count=len(existing),
+            )
+
+    def _list_live_tables(self) -> set[str]:
+        """Query the Kuzu DB for the set of current table names."""
+        try:
+            result = self._conn.execute("CALL SHOW_TABLES() RETURN *")
+        except Exception:  # noqa: BLE001
+            # Kuzu's SHOW_TABLES call shape has shifted between versions;
+            # treat inability to read as "empty" rather than a false drift.
+            return set()
+        names: set[str] = set()
+        while result.has_next():
+            row = result.get_next()
+            # Row shape: (id, name, type, ...). We want `name`.
+            if len(row) >= 2:
+                names.add(str(row[1]))
+        return names
 
     def _exec_safe(self, query: str):
         """Execute query, ignore 'already exists' errors."""
