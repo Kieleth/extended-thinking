@@ -112,31 +112,88 @@ def cmd_insight(force: bool = False) -> int:
     pipeline = _get_pipeline()
 
     print(style.header("insight"))
+    print()
 
-    sync_result = asyncio.run(pipeline.sync())
-    insight = asyncio.run(pipeline.get_insight())
-
-    if insight["type"] == "nothing_new" and force:
-        wisdom = asyncio.run(pipeline.generate_wisdom(force=True))
-        if wisdom:
-            insight = {"type": "wisdom"}
-
+    wisdom = asyncio.run(_run_insight_flow(pipeline))
     concepts = pipeline.store.list_concepts(order_by="frequency", limit=50)
-    wisdoms = pipeline.store.list_wisdoms(limit=1)
 
     print()
-    if wisdoms:
-        print(_render_insight(wisdoms[0], concepts, store=pipeline.store))
-        # The noticing IS the moment — quiet sign-off.
+    if wisdom and wisdom.get("id"):
+        # generate_wisdom returns a summary dict; fetch the full row so
+        # the renderer has related_concept_ids + description to work with.
+        full = pipeline.store.get_wisdom(wisdom["id"]) if hasattr(
+            pipeline.store, "get_wisdom"
+        ) else None
+        row = full or wisdom
+        print(_render_insight(row, concepts, store=pipeline.store))
         print()
         print(style.signature("up", "lit", glowing=True, note="noticing."))
     else:
-        title = insight.get("insight", {}).get("title", "nothing to surface yet")
-        print(f"  {title}")
+        print(f"  {style.dim('nothing to surface yet.')}")
         print()
         print(style.signature("narrow", "rest",
                               note="not enough yet. keep thinking, keep syncing."))
     return 0
+
+
+async def _run_insight_flow(pipeline):
+    """Sync with the live reporter, then generate wisdom with a
+    thinking-spinner. Two phases, each visibly alive — no silent hangs."""
+    import contextlib
+
+    # Phase 1: sync with the same reporter et sync uses. Animates phase by
+    # phase; no double-sync (we skip pipeline.get_insight's internal one).
+    await _run_sync_with_reporter(pipeline)
+
+    # Phase 2: check if a prior wisdom is queued. If so, mark it seen and
+    # serve that — no Opus call needed.
+    pending = pipeline.store.list_wisdoms(status="pending")
+    if pending:
+        pipeline.store.update_wisdom_status(pending[0]["id"], "seen")
+        return pending[0]
+
+    # Phase 3: live "thinking" animation while Opus runs. Same sprite
+    # vocabulary as sync but face is `up` (looking at the graph) and
+    # the pulse persists through a 5-15s Anthropic call.
+    spin_task = asyncio.create_task(_thinking_spinner())
+    try:
+        wisdom = await pipeline.generate_wisdom(force=True)
+    finally:
+        spin_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await spin_task
+        if sys.stdout.isatty():
+            # Clear the spinner line so the rendered card starts clean.
+            sys.stdout.write("\r\033[K")
+            sys.stdout.flush()
+    return wisdom
+
+
+async def _thinking_spinner():
+    """One-line ET looking up at the graph while Opus thinks. Pulses the
+    fingertip through spark/small/lit/burn at ~180ms; elapsed counter
+    on the right so long Opus calls feel supervised, not hung."""
+    import time as _time
+    if not sys.stdout.isatty():
+        return
+    cycle = ["rest", "spark", "small", "lit", "burn", "lit", "small", "spark"]
+    t0 = _time.monotonic()
+    i = 0
+    try:
+        while True:
+            sprite = style.mascot("up", cycle[i % len(cycle)], glowing=True)
+            elapsed = _time.monotonic() - t0
+            line = (
+                f"  {sprite}  "
+                f"{style.dim('thinking')}…  "
+                f"{style.dim(f'{elapsed:>5.1f}s')}"
+            )
+            sys.stdout.write(f"\r{line}\033[K")
+            sys.stdout.flush()
+            await asyncio.sleep(0.18)
+            i += 1
+    except asyncio.CancelledError:
+        raise
 
 
 def cmd_concepts(limit: int = 20) -> int:
